@@ -12,6 +12,7 @@ interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
   setAuth: (user: User) => void;
+  setUser: (user: User | null) => void;
   setProfileImage: (image: string) => void;
   logout: () => void;
 }
@@ -22,6 +23,7 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       isAuthenticated: false,
       setAuth: (user) => set({ user, isAuthenticated: true }),
+      setUser: (user) => set({ user, isAuthenticated: Boolean(user) }),
       setProfileImage: (image) =>
         set((state) => ({
           user: state.user ? { ...state.user, image } : state.user,

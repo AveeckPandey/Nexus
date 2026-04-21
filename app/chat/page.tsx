@@ -110,8 +110,8 @@ const formatMessageTime = (createdAt?: string, fallback?: string) => {
 
 export default function ChatPage() {
   const router = useRouter();
-  const { user, setProfileImage, logout } = useAuthStore();
-  const { messages, setMessages, addMessage, replaceMessage, removeMessage, summary, setSummary, activeChatId, setActiveChatId } =
+  const { user, setAuth, setProfileImage, logout } = useAuthStore();
+  const { messages, setMessages, addMessage, replaceMessage, removeMessage, activeChatId, setActiveChatId } =
     useChatStore();
   const { colorMode, backgroundTheme, toggleColorMode, setBackgroundTheme } =
     usePreferencesStore();
@@ -130,6 +130,10 @@ export default function ChatPage() {
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [translatingIndex, setTranslatingIndex] = useState<number | null>(null);
+  const [threadSummaries, setThreadSummaries] = useState<Record<string, string>>({});
+  const [translationsByThread, setTranslationsByThread] = useState<
+    Record<string, Record<string, string>>
+  >({});
   const [isAvatarBusy, setIsAvatarBusy] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [activeMessageMenuId, setActiveMessageMenuId] = useState<string | null>(null);
@@ -154,6 +158,9 @@ export default function ChatPage() {
   const currentUserImage = currentUser?.image ?? '';
   const isDarkUi = isHydrated ? colorMode === 'dark' : false;
   const activeContact = contacts.find((contact) => contact.id === activeChatId) ?? contacts[0] ?? null;
+  const activeThreadId = activeContact?.id ?? null;
+  const activeSummary = activeThreadId ? threadSummaries[activeThreadId] ?? null : null;
+  const activeTranslations = activeThreadId ? translationsByThread[activeThreadId] ?? {} : {};
 
   const sortedContacts = useMemo(
     () =>
@@ -219,7 +226,31 @@ export default function ChatPage() {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, summary, pendingAudio, pendingImage]);
+  }, [messages, activeSummary, pendingAudio, pendingImage]);
+
+  useEffect(() => {
+    const hydrateProfile = async () => {
+      if (!isHydrated) {
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/auth/me', { cache: 'no-store' });
+        if (!res.ok) {
+          return;
+        }
+
+        const data = await res.json();
+        if (data?.id) {
+          setAuth(data);
+        }
+      } catch (error) {
+        console.error('Profile hydration failed:', error);
+      }
+    };
+
+    void hydrateProfile();
+  }, [isHydrated, setAuth]);
 
   const syncConversations = async (preserveSelection = true) => {
     try {
@@ -287,7 +318,6 @@ export default function ChatPage() {
 
       if (activeChatIdRef.current === contactId) {
         setMessages(data);
-        setSummary(null);
       }
 
       setConversationPreview((prev) => {
@@ -443,7 +473,7 @@ export default function ChatPage() {
   };
 
   // translating the chats
-  const handleTranslate = async (text: string, index: number) => {
+  const handleTranslate = async (messageId: string, text: string, index: number) => {
     if (!text.trim()) {
       return;
     }
@@ -461,9 +491,17 @@ export default function ChatPage() {
         throw new Error(data.error || 'Translation failed');
       }
 
-      const updatedMessages = [...messages];
-      updatedMessages[index] = { ...updatedMessages[index], content: data.translatedText };
-      setMessages(updatedMessages);
+      if (!activeContact) {
+        return;
+      }
+
+      setTranslationsByThread((prev) => ({
+        ...prev,
+        [activeContact.id]: {
+          ...(prev[activeContact.id] || {}),
+          [messageId]: data.translatedText,
+        },
+      }));
     } catch (error) {
       console.error('Translation failed:', error);
       alert(error instanceof Error ? error.message : 'Translation failed');
@@ -504,7 +542,14 @@ export default function ChatPage() {
         throw new Error(data.error || 'Summarization failed');
       }
 
-      setSummary(data.summary);
+      if (!activeContact) {
+        return;
+      }
+
+      setThreadSummaries((prev) => ({
+        ...prev,
+        [activeContact.id]: data.summary,
+      }));
       setIsActionMenuOpen(false);
     } catch (error) {
       console.error('Summarization failed:', error);
@@ -578,9 +623,22 @@ export default function ChatPage() {
     setIsAvatarBusy(true);
     try {
       const imageUrl = await fileToDataUrl(file);
+      const res = await fetch('/api/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: imageUrl }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Could not update profile picture');
+      }
+
+      setAuth(data);
       setProfileImage(imageUrl);
-    } catch {
-      alert('Could not update profile picture');
+    } catch (error) {
+      console.error('Profile update failed:', error);
+      alert(error instanceof Error ? error.message : 'Could not update profile picture');
     } finally {
       setIsAvatarBusy(false);
       e.target.value = '';
@@ -939,7 +997,7 @@ export default function ChatPage() {
                               </div>
                             ) : null}
                             {message.content ? (
-                              <p className="whitespace-pre-wrap text-[15px]">{message.content}</p>
+                              <p className="whitespace-pre-wrap text-[15px]">{activeTranslations[message.id] || message.content}</p>
                             ) : null}
                             {message.transcript ? (
                               <p className="mt-2 text-xs opacity-75">Transcript: {message.transcript}</p>
@@ -952,7 +1010,7 @@ export default function ChatPage() {
                           {message.content && !message.deletedForEveryone ? (
                             <button
                               type="button"
-                              onClick={() => handleTranslate(message.content, index)}
+                              onClick={() => handleTranslate(message.id, message.content, index)}
                               disabled={translatingIndex === index}
                               className="inline-flex items-center gap-1 text-[11px] font-medium opacity-70 transition hover:opacity-100 disabled:opacity-40"
                             >
@@ -990,7 +1048,7 @@ export default function ChatPage() {
                 );
               })}
 
-              {summary ? (
+              {activeSummary ? (
                 <div className="flex justify-center pt-2">
                   <div className="max-w-xl rounded-[28px] border border-white/60 bg-white/72 px-4 py-3 text-center text-sm text-[#32424c] shadow-[0_18px_50px_rgba(88,115,150,0.18)] backdrop-blur-xl">
                     <div className="mb-2 flex items-center justify-between gap-3">
@@ -999,13 +1057,23 @@ export default function ChatPage() {
                       </span>
                       <button
                         type="button"
-                        onClick={() => setSummary(null)}
+                        onClick={() => {
+                          if (!activeThreadId) {
+                            return;
+                          }
+
+                          setThreadSummaries((prev) => {
+                            const next = { ...prev };
+                            delete next[activeThreadId];
+                            return next;
+                          });
+                        }}
                         className="rounded-full p-1 text-[#32424c] transition hover:bg-black/5"
                       >
                         <X size={14} />
                       </button>
                     </div>
-                    {summary}
+                    {activeSummary}
                   </div>
                 </div>
               ) : null}
