@@ -21,11 +21,10 @@ body {
   background: transparent;
 }
 
-/* ---- Liquid glassmorphism (AE recipe translated to CSS) ----
+/* ---- Liquid glassmorphism ----
    Step 1 (Glass Base + blurred edge stroke)  -> .glass-edge gradient border
    Step 2 (edge refraction bend)              -> .glass-refract inner band
-   Step 3 (animated turbulent highlight)      -> .glass-sheen sweep, masked by overflow-hidden
-   Step 4 (frosted backdrop blur + milky lift)-> .glass-shell / .glass-inner backdrop-filter */
+   Step 3 (frosted backdrop blur + milky lift)-> .glass-shell / .glass-inner backdrop-filter */
 .glass-shell {
   position: relative;
   -webkit-backdrop-filter: blur(28px) saturate(1.5) brightness(1.08);
@@ -95,45 +94,6 @@ body {
     0 24px 70px -30px rgba(0, 0, 0, 0.8),
     inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
-/* Animated shimmer sweep — the "turbine" highlight, masked to the glass by overflow-hidden */
-.glass-sheen {
-  position: absolute;
-  top: -20%;
-  bottom: -20%;
-  left: 0;
-  width: 32%;
-  background: linear-gradient(
-    100deg,
-    transparent,
-    rgba(255, 255, 255, 0.08) 35%,
-    rgba(196, 181, 253, 0.14) 50%,
-    rgba(255, 255, 255, 0.08) 65%,
-    transparent
-  );
-  filter: blur(6px);
-  transform: translateX(-180%) skewX(-12deg);
-  animation: glass-sweep 9s ease-in-out infinite;
-  pointer-events: none;
-  z-index: 20;
-}
-@keyframes glass-sweep {
-  0% {
-    transform: translateX(-180%) skewX(-12deg);
-    opacity: 0;
-  }
-  12% {
-    opacity: 1;
-  }
-  55% {
-    transform: translateX(430%) skewX(-12deg);
-    opacity: 1;
-  }
-  72%,
-  100% {
-    transform: translateX(430%) skewX(-12deg);
-    opacity: 0;
-  }
-}
 /* Small glass tiles / chips / inputs */
 .glass-tile {
   background: linear-gradient(150deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.02));
@@ -161,11 +121,5 @@ body {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.1),
     inset 0 -1px 0 rgba(0, 0, 0, 0.3);
-}
-@media (prefers-reduced-motion: reduce) {
-  .glass-sheen {
-    animation: none;
-    opacity: 0;
-  }
 }
 

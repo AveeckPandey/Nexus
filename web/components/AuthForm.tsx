@@ -66,9 +66,6 @@ export function AuthForm() {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
 
-  const emailOk = useMemo(() => EMAIL_RE.test(email.trim()), [email]);
-  const canSubmit =
-    !busy && emailOk && password.length >= (mode === 'signup' ? 8 : 1) && (mode === 'login' || password === confirm);
   const pw = useMemo(() => strength(password), [password]);
   const isLogin = mode === 'login' && !verify;
 
@@ -83,6 +80,28 @@ export function AuthForm() {
     setError(null);
     setStatus(null);
     const clean = email.trim().toLowerCase();
+    if (!clean) {
+      setError('Please enter your email address.');
+      return;
+    }
+    if (!EMAIL_RE.test(clean)) {
+      setError('Please enter a valid email address.');
+      return;
+    }
+    if (!password) {
+      setError('Please enter a password.');
+      return;
+    }
+    if (mode === 'signup') {
+      if (password.length < 8) {
+        setError('Password must be at least 8 characters long.');
+        return;
+      }
+      if (password !== confirm) {
+        setError('Passwords do not match. Please re-enter.');
+        return;
+      }
+    }
     setBusy(true);
     try {
       if (mode === 'login') {
@@ -164,8 +183,8 @@ export function AuthForm() {
 
   return (
     <div className="min-h-screen w-full relative overflow-y-auto overflow-x-hidden bg-[#0A0618] text-white flex flex-col items-center justify-center px-4 py-8">
-      {/* backdrop — Dither wave field + ambient glow */}
-      <div aria-hidden className="pointer-events-none fixed inset-0 z-0 overflow-hidden bg-black">
+      {/* backdrop — Dither wave field (pixel background) */}
+      <div aria-hidden className="fixed inset-0 z-0 overflow-hidden bg-black pointer-events-auto">
         <div className="absolute inset-0 w-full h-full">
           <Dither
             waveColor={[0.48627450980392156, 0.22745098039215686, 0.9294117647058824]}
@@ -179,16 +198,11 @@ export function AuthForm() {
             backgroundColor={[0, 0, 0]}
           />
         </div>
-        {/* Readability overlay + soft ambient glow ABOVE the dither field */}
-        <div className="absolute inset-0 bg-black/35" />
-        <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[800px] h-[450px] rounded-full bg-[#6D28D9]/15 blur-[130px]" />
-        <div className="absolute bottom-[-180px] left-[10%] w-[500px] h-[400px] rounded-full bg-[#4C1D95]/20 blur-[120px]" />
-        <div className="absolute top-[25%] right-[5%] w-[400px] h-[400px] rounded-full bg-[#7C3AED]/10 blur-[120px]" />
+        <div className="absolute inset-0 bg-[#0A0618]/45 pointer-events-none" />
       </div>
 
       {/* card — liquid glass shell */}
       <div className="relative z-10 w-full max-w-[1080px] grid lg:grid-cols-[1.08fr_0.92fr] rounded-[22px] overflow-hidden glass-edge glass-shell glass-refract">
-        <span aria-hidden className="glass-sheen" />
         {/* LEFT */}
         <div className="relative overflow-hidden p-7 sm:p-9 lg:p-10 min-h-[480px] flex flex-col">
 
@@ -255,7 +269,6 @@ export function AuthForm() {
           </div>
 
           <div className="mt-5 flex-1 rounded-[18px] glass-edge-soft glass-inner glass-refract overflow-hidden p-6 sm:p-7">
-            <span aria-hidden className="glass-sheen" style={{ width: '45%', animationDelay: '-4.5s' }} />
             {verify ? (
               <>
                 <h2 className="text-[30px] font-extrabold tracking-tight">Check your email</h2>
@@ -324,7 +337,7 @@ export function AuthForm() {
                       placeholder="Email address"
                       type="email"
                       autoComplete="email"
-                      onKeyDown={(e) => { if (e.key === 'Enter' && canSubmit) submit(); }}
+                      onKeyDown={(e) => { if (e.key === 'Enter' && !busy) submit(); }}
                       className="w-full rounded-xl border border-white/10 glass-input pl-11 pr-4 py-3.5 text-[14px] placeholder:text-[#6F668F] outline-none focus:border-[#8B5CF6]/70 focus:ring-2 focus:ring-[#8B5CF6]/20 transition"
                     />
                   </div>
@@ -339,7 +352,7 @@ export function AuthForm() {
                       placeholder="Password"
                       type={show ? 'text' : 'password'}
                       autoComplete={isLogin ? 'current-password' : 'new-password'}
-                      onKeyDown={(e) => { if (e.key === 'Enter' && canSubmit) submit(); }}
+                      onKeyDown={(e) => { if (e.key === 'Enter' && !busy) submit(); }}
                       className="w-full rounded-xl border border-white/10 glass-input pl-11 pr-11 py-3.5 text-[14px] placeholder:text-[#6F668F] outline-none focus:border-[#8B5CF6]/70 focus:ring-2 focus:ring-[#8B5CF6]/20 transition"
                     />
                     <button onClick={() => setShow((v) => !v)} aria-label={show ? 'Hide password' : 'Show password'} className="absolute right-4 top-1/2 -translate-y-1/2 text-[#B9B0D6] hover:text-white transition-colors">
@@ -363,7 +376,7 @@ export function AuthForm() {
                           placeholder="Confirm password"
                           type={show ? 'text' : 'password'}
                           autoComplete="new-password"
-                          onKeyDown={(e) => { if (e.key === 'Enter' && canSubmit) submit(); }}
+                          onKeyDown={(e) => { if (e.key === 'Enter' && !busy) submit(); }}
                           className="w-full rounded-xl border border-white/10 glass-input pl-11 pr-4 py-3.5 text-[14px] placeholder:text-[#6F668F] outline-none focus:border-[#8B5CF6]/70 focus:ring-2 focus:ring-[#8B5CF6]/20 transition"
                         />
                       </div>
@@ -406,7 +419,7 @@ export function AuthForm() {
 
                   <button
                     onClick={submit}
-                    disabled={!canSubmit}
+                    disabled={busy}
                     className="group w-full rounded-xl bg-gradient-to-r from-[#9B7BFF] via-[#7C3AED] to-[#6D28D9] px-4 py-[15px] font-bold text-[15px] shadow-[0_12px_36px_-8px_rgba(139,92,246,0.8),inset_0_1px_0_rgba(255,255,255,0.25)] hover:brightness-110 hover:shadow-[0_16px_44px_-8px_rgba(139,92,246,0.9)] active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                   >
                     {busy ? 'Please wait…' : (
@@ -416,6 +429,32 @@ export function AuthForm() {
                       </span>
                     )}
                   </button>
+
+                  <div className="text-center pt-1 text-[13px] text-[#A78BFA]">
+                    {isLogin ? (
+                      <span>
+                        Don&apos;t have an account?{' '}
+                        <button
+                          type="button"
+                          onClick={() => switchMode('signup')}
+                          className="font-bold text-white hover:underline transition-all underline-offset-2"
+                        >
+                          Create an account
+                        </button>
+                      </span>
+                    ) : (
+                      <span>
+                        Already have an account?{' '}
+                        <button
+                          type="button"
+                          onClick={() => switchMode('login')}
+                          className="font-bold text-white hover:underline transition-all underline-offset-2"
+                        >
+                          Sign in
+                        </button>
+                      </span>
+                    )}
+                  </div>
 
                   <div className="flex items-center gap-3 pt-1 text-[11px] font-medium tracking-[0.08em] text-[#7E76A0]">
                     <span className="flex-1 h-px bg-white/10" /> OR CONTINUE WITH <span className="flex-1 h-px bg-white/10" />
