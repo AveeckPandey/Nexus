@@ -1,0 +1,27 @@
+services:
+  nexus-backend:
+    build: .
+    container_name: nexus-backend
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      - PORT=8080
+      - NODE_ENV=production
+      - NODE_OPTIONS=--max-old-space-size=450
+      - REDIS_URL=redis://nexus-redis:6379
+    depends_on:
+      - nexus-redis
+    deploy:
+      resources:
+        limits:
+          memory: 500M
+
+  nexus-redis:
+    image: redis:7-alpine
+    container_name: nexus-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"

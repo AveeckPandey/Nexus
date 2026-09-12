@@ -1,0 +1,48 @@
+{
+  "name": "nexus-server",
+  "version": "2.0.0",
+  "description": "Nexus web-only messaging API (NestJS + Fastify + Socket.IO)",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "build": "nest build",
+    "start": "nest start",
+    "start:dev": "nest start --watch",
+    "start:prod": "node dist/main"
+  },
+  "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.750.0",
+    "@aws-sdk/client-dynamodb": "^3.750.0",
+    "@aws-sdk/client-s3": "^3.750.0",
+    "@aws-sdk/client-translate": "^3.750.0",
+    "@aws-sdk/lib-dynamodb": "^3.750.0",
+    "@aws-sdk/s3-request-presigner": "^3.750.0",
+    "@fastify/cors": "^10.0.2",
+    "@nestjs/common": "^11.0.10",
+    "@nestjs/config": "^4.0.0",
+    "@nestjs/core": "^11.0.10",
+    "@nestjs/platform-fastify": "^11.0.10",
+    "@nestjs/platform-socket.io": "^11.0.10",
+    "@nestjs/websockets": "^11.0.10",
+    "@socket.io/redis-adapter": "^8.3.0",
+    "aws-jwt-verify": "^4.0.1",
+    "axios": "^1.8.1",
+    "expo-server-sdk": "^3.13.0",
+    "groq-sdk": "^0.15.0",
+    "ioredis": "^6.0.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "socket.io": "^4.8.1",
+    "uuid": "^11.1.0",
+    "web-push": "^3.6.7"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.5",
+    "@nestjs/schematics": "^11.0.2",
+    "@types/node": "^22.13.9",
+    "@types/uuid": "^10.0.0",
+    "@types/web-push": "^3.6.4",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.3"
+  }
+}

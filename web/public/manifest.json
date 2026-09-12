@@ -1,0 +1,9 @@
+{
+  "name": "Nexus Encrypted Messaging",
+  "short_name": "Nexus",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#14092B",
+  "theme_color": "#14092B",
+  "icons": []
+}
