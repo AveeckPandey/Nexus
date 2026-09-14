@@ -31,6 +31,7 @@ export function AiChatPanel() {
   ]);
   const [text, setText] = useState('');
   const [thinking, setThinking] = useState(false);
+  const [expired, setExpired] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -50,19 +51,53 @@ export function AiChatPanel() {
         ...prev,
         { id: `a_${Date.now()}`, role: 'ai', text: reply || '…', at: new Date().toISOString() },
       ]);
-    } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `e_${Date.now()}`,
-          role: 'ai',
-          text: 'Sorry — I could not reach the AI service. Check your connection and try again.',
-          at: new Date().toISOString(),
-        },
-      ]);
+    } catch (e: any) {
+      const status = e?.response?.status;
+      if (status === 401) {
+        // Refresh already failed in the api layer — session is dead.
+        setExpired(true);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `e_${Date.now()}`,
+            role: 'ai',
+            text: 'Your session expired and could not be refreshed. Please sign in again, then retry.',
+            at: new Date().toISOString(),
+          },
+        ]);
+      } else if (status === 429) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `e_${Date.now()}`,
+            role: 'ai',
+            text: 'You hit the AI rate limit. Wait a minute and try again.',
+            at: new Date().toISOString(),
+          },
+        ]);
+      } else {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `e_${Date.now()}`,
+            role: 'ai',
+            text: 'Sorry — I could not reach the AI service. Check your connection and try again.',
+            at: new Date().toISOString(),
+          },
+        ]);
+      }
     } finally {
       setThinking(false);
     }
+  };
+
+  const signOut = () => {
+    try {
+      useAuthStore.getState().logout();
+    } catch {
+      /* ignore */
+    }
+    window.location.href = '/';
   };
 
   return (
@@ -137,6 +172,17 @@ export function AiChatPanel() {
       </div>
 
       <div className="p-3 bg-whatsapp-panel border-t border-white/10">
+        {expired && (
+          <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-amber-400/30 bg-amber-400/10 px-3.5 py-2.5 text-[12.5px] text-amber-200">
+            <span>Session expired — sign in again to keep chatting.</span>
+            <button
+              onClick={signOut}
+              className="shrink-0 rounded-lg bg-white/10 hover:bg-white/15 px-3 py-1.5 text-[12px] font-semibold transition"
+            >
+              Sign in again
+            </button>
+          </div>
+        )}
         <div className="flex items-end gap-2">
           <div className="flex-1 flex items-center bg-whatsapp-composer border border-white/10 rounded-3xl px-4 py-1.5 focus-within:border-secondary/60 transition-colors">
             <input

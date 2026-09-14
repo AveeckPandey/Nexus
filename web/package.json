@@ -12,6 +12,7 @@
   "dependencies": {
     "@heroui/react": "^2.6.0",
     "@heroui/theme": "^2.4.0",
+    "@react-oauth/google": "^0.13.5",
     "@react-three/fiber": "^8.18.0",
     "@react-three/postprocessing": "^2.19.1",
     "axios": "^1.8.1",

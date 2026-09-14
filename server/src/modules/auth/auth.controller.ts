@@ -14,11 +14,13 @@ import { AuthService } from './auth.service';
 import { CognitoAuthGuard } from '../../common/guards/cognito-auth.guard';
 import {
   ConfirmDto,
+  ForgotPasswordDto,
   GithubDto,
   GoogleDto,
   LoginDto,
   RefreshDto,
   ResendDto,
+  ResetPasswordDto,
   SignUpDto,
   UpdateProfileDto,
 } from './dto';
@@ -74,7 +76,23 @@ export class AuthController {
 
   @Post('refresh')
   refresh(@Body() b: RefreshDto) {
-    return this.auth.refresh(b.refreshToken);
+    return this.auth.refresh(b.refreshToken, b.email);
+  }
+
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @Post('forgot-password')
+  forgotPassword(@Body() b: ForgotPasswordDto) {
+    return this.auth.forgotPassword({ email: b.email.toLowerCase() });
+  }
+
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @Post('reset-password')
+  resetPassword(@Body() b: ResetPasswordDto) {
+    return this.auth.resetPassword({
+      email: b.email.toLowerCase(),
+      code: b.code,
+      newPassword: b.newPassword,
+    });
   }
 
   @Get('me')

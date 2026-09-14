@@ -29,7 +29,16 @@ export const useAuthStore = create<AuthState>((set) => ({
       if (user && token) {
         setTokens(token, refresh);
         connectSocket(token);
-        set({ user: JSON.parse(user), token, isAuthenticated: true, hydrated: true });
+        const parsed = JSON.parse(user);
+        try {
+          // Backfill for sessions stored before email persistence (refresh needs it).
+          if (parsed?.email && !localStorage.getItem('nexus_email')) {
+            localStorage.setItem('nexus_email', parsed.email);
+          }
+        } catch {
+          /* private mode */
+        }
+        set({ user: parsed, token, isAuthenticated: true, hydrated: true });
         return;
       }
     } catch {
@@ -43,6 +52,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       localStorage.setItem('nexus_user', JSON.stringify(user));
       localStorage.setItem('nexus_token', token);
+      if (user?.email) localStorage.setItem('nexus_email', user.email);
       if (refreshToken) localStorage.setItem('nexus_refresh', refreshToken);
     } catch {
       /* private mode */
@@ -57,6 +67,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       localStorage.removeItem('nexus_user');
       localStorage.removeItem('nexus_token');
+      localStorage.removeItem('nexus_email');
       localStorage.removeItem('nexus_refresh');
     } catch {
       /* ignore */

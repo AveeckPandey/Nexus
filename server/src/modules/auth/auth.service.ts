@@ -14,6 +14,8 @@ import {
   ConfirmSignUpCommand,
   InitiateAuthCommand,
   ResendConfirmationCodeCommand,
+  ForgotPasswordCommand,
+  ConfirmForgotPasswordCommand,
 } from '@aws-sdk/client-cognito-identity-provider';
 import { cognitoClient, AWS_CONFIG, cognitoSecretHash } from '../../config/aws.config';
 import { DynamoDbService } from '../dynamodb/dynamodb.service';
@@ -181,6 +183,106 @@ export class AuthService {
         cognitoErrorMessage(err, 'Invalid confirmation code. Please try again.'),
       );
     }
+  }
+
+  /** Start password reset. Always returns the same message (anti-enumeration). */
+  async forgotPassword(dto: { email: string }) {
+    const cleanEmail = dto.email.trim().toLowerCase();
+    const done = { success: true, message: 'If an account exists for this email, a reset code was sent.' };
+    if (!hasCognito()) {
+      const cred = await this.db.get(`AUTH#${cleanEmail}`, 'CRED');
+      if (!cred) return done;
+      const code = String(crypto.randomInt(100000, 1000000));
+      try {
+        await this.redis.set(`auth:reset:${cleanEmail}`, code, 'EX', 900);
+        await this.redis.del(`auth:resetfail:${cleanEmail}`);
+      } catch {}
+      // Dev-only: no mailer configured — surface via server log, never the API.
+      this.logger.log(`Password reset code for ${cleanEmail} (dev fallback, expires in 15 min)`);
+      return done;
+    }
+    requireCognito();
+    try {
+      await cognitoClient.send(
+        new ForgotPasswordCommand({
+          ClientId: AWS_CONFIG.cognitoClientId,
+          Username: cleanEmail,
+          SecretHash: cognitoSecretHash(cleanEmail),
+        }),
+      );
+    } catch (err: any) {
+      // UserNotFound included: identical response whether the account exists.
+      const name = err?.name || '';
+      if (!name.includes('UserNotFound')) {
+        throw new BadRequestException(cognitoErrorMessage(err, 'Could not start password reset.'));
+      }
+    }
+    return done;
+  }
+
+  /** Confirm reset code + set new password. Generic errors (anti-enumeration). */
+  async resetPassword(dto: { email: string; code: string; newPassword: string }) {
+    const cleanEmail = dto.email.trim().toLowerCase();
+    const code = dto.code.trim();
+    if (!hasCognito()) {
+      let stored: string | null = null;
+      try {
+        stored = await this.redis.get(`auth:reset:${cleanEmail}`);
+      } catch {}
+      if (!stored) {
+        throw new BadRequestException('Invalid or expired reset code.');
+      }
+      let ok = false;
+      try {
+        const a = Buffer.from(code);
+        const b = Buffer.from(stored);
+        ok = a.length === b.length && crypto.timingSafeEqual(a, b);
+      } catch {
+        ok = false;
+      }
+      if (!ok) {
+        try {
+          const hits = await this.redis.incr(`auth:resetfail:${cleanEmail}`);
+          if (hits === 1) await this.redis.expire(`auth:resetfail:${cleanEmail}`, 900);
+          if (hits >= 5) await this.redis.del(`auth:reset:${cleanEmail}`);
+        } catch {}
+        throw new BadRequestException('Invalid or expired reset code.');
+      }
+      const cred = await this.db.get<any>(`AUTH#${cleanEmail}`, 'CRED');
+      if (!cred) throw new BadRequestException('Invalid or expired reset code.');
+      const salt = crypto.randomBytes(16).toString('hex');
+      await this.db.put({
+        PK: `AUTH#${cleanEmail}`,
+        SK: 'CRED',
+        userId: cred.userId,
+        email: cleanEmail,
+        salt,
+        hash: AuthService.hashPassword(dto.newPassword, salt),
+        createdAt: cred.createdAt || new Date().toISOString(),
+      });
+      try {
+        await this.redis.del(`auth:reset:${cleanEmail}`);
+        await this.redis.del(`auth:resetfail:${cleanEmail}`);
+      } catch {}
+      await this.clearLoginFails(cleanEmail);
+      return { success: true, message: 'Password updated. Please sign in with your new password.' };
+    }
+    requireCognito();
+    try {
+      await cognitoClient.send(
+        new ConfirmForgotPasswordCommand({
+          ClientId: AWS_CONFIG.cognitoClientId,
+          Username: cleanEmail,
+          ConfirmationCode: code,
+          Password: dto.newPassword,
+          SecretHash: cognitoSecretHash(cleanEmail),
+        }),
+      );
+    } catch (err: any) {
+      throw new BadRequestException(cognitoErrorMessage(err, 'Password reset failed.'));
+    }
+    await this.clearLoginFails(cleanEmail);
+    return { success: true, message: 'Password updated. Please sign in with your new password.' };
   }
 
   async resendCode(dto: { email: string }) {
@@ -351,6 +453,7 @@ export class AuthService {
   private async clearLoginFails(email: string): Promise<void> {
     try {
       await this.redis.del(`auth:fail:${email}`);
+      await this.redis.del(`auth:lock:${email}`);
     } catch {}
   }
 
@@ -498,14 +601,30 @@ export class AuthService {
     return { success: true, idToken, accessToken: idToken, user };
   }
 
-  async refresh(refreshToken: string) {
+  async refresh(refreshToken: string, email?: string) {
+    // Dev fallback: the "refresh token" is a session JWT — re-mint if valid.
+    if (!hasCognito()) {
+      try {
+        const session = await this.tokens.verify(refreshToken);
+        const idToken = this.tokens.mintSessionToken(session);
+        return { success: true, idToken, accessToken: idToken };
+      } catch {
+        throw new UnauthorizedException('Invalid refresh token');
+      }
+    }
     requireCognito();
     try {
+      const params: Record<string, string> = { REFRESH_TOKEN: refreshToken };
+      // App clients with a secret reject unsigned refresh calls — same hash as login.
+      if (email) {
+        const sh = cognitoSecretHash(email.trim().toLowerCase());
+        if (sh) params.SECRET_HASH = sh;
+      }
       const r = await cognitoClient.send(
         new InitiateAuthCommand({
           AuthFlow: 'REFRESH_TOKEN_AUTH',
           ClientId: AWS_CONFIG.cognitoClientId,
-          AuthParameters: { REFRESH_TOKEN: refreshToken },
+          AuthParameters: params,
         }),
       );
       return {

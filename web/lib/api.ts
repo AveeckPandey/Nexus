@@ -26,10 +26,16 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && refreshToken && !original._retried) {
       original._retried = true;
       try {
+        let email: string | null = null;
+        try {
+          email = localStorage.getItem('nexus_email');
+        } catch {
+          /* storage unavailable */
+        }
         refreshing =
           refreshing ||
           axios
-            .post(`${baseURL}/api/auth/refresh`, { refreshToken })
+            .post(`${baseURL}/api/auth/refresh`, { refreshToken, email })
             .then((r) => {
               setTokens(r.data.idToken, refreshToken);
               try {
@@ -75,6 +81,10 @@ export const authApi = {
     api.post('/api/auth/login', { email, password }).then((r) => r.data),
   google: (credential: string) => api.post('/api/auth/google', { credential }).then((r) => r.data),
   github: (code: string) => api.post('/api/auth/github', { code }).then((r) => r.data),
+  forgotPassword: (email: string) =>
+    api.post('/api/auth/forgot-password', { email }).then((r) => r.data),
+  resetPassword: (email: string, code: string, newPassword: string) =>
+    api.post('/api/auth/reset-password', { email, code, newPassword }).then((r) => r.data),
   me: () => api.get('/api/auth/me').then((r) => r.data),
   profile: (patch: { language?: string; name?: string; username?: string; x25519PublicKey?: string; avatarUrl?: string; about?: string }) =>
     api.patch('/api/auth/profile', patch).then((r) => r.data),

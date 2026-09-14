@@ -52,10 +52,13 @@ export function AuthForm() {
   const login = useAuthStore((s) => s.login);
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [verify, setVerify] = useState(false);
+  const [stage, setStage] = useState<'auth' | 'forgot' | 'reset'>('auth');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNew, setConfirmNew] = useState('');
   const [show, setShow] = useState(false);
   const [remember, setRemember] = useState(true);
   const [code, setCode] = useState('');
@@ -64,13 +67,28 @@ export function AuthForm() {
   const [status, setStatus] = useState<string | null>(null);
 
   const pw = useMemo(() => strength(password), [password]);
+  const newPw = useMemo(() => strength(newPassword), [newPassword]);
   const isLogin = mode === 'login' && !verify;
 
   const switchMode = (m: 'login' | 'signup') => {
     setError(null);
     setStatus(null);
     setVerify(false);
+    setStage('auth');
+    setNewPassword('');
+    setConfirmNew('');
     setMode(m);
+  };
+
+  const backToLogin = () => {
+    setError(null);
+    setStatus(null);
+    setVerify(false);
+    setStage('auth');
+    setCode('');
+    setNewPassword('');
+    setConfirmNew('');
+    setMode('login');
   };
 
   const submit = async () => {
@@ -147,17 +165,74 @@ export function AuthForm() {
   };
 
 
-  const forgot = async () => {
-    if (!EMAIL_RE.test(email.trim())) {
-      setError('Enter your email above first, then use Forgot password to resend a code.');
+  const googleCredential = async (credential: string) => {
+    setError(null);
+    setBusy(true);
+    try {
+      const r = await authApi.google(credential);
+      login(r.user, r.idToken);
+      ensureIdentityPublished().catch(() => {});
+    } catch (e: any) {
+      setError(friendly(e, 'Google sign-in failed'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sendResetCode = async () => {
+    const clean = email.trim().toLowerCase();
+    if (!EMAIL_RE.test(clean)) {
+      setError('Enter the email address of your account first.');
       return;
     }
+    setError(null);
+    setStatus(null);
+    setBusy(true);
     try {
-      await authApi.resend(email.trim().toLowerCase());
-      setVerify(true);
-      setStatus('Reset / verification code sent. Enter it below to verify, then sign in.');
+      const r = await authApi.forgotPassword(clean);
+      setStatus(r.message || 'If an account exists for this email, a reset code was sent.');
+      setStage('reset');
     } catch (e: any) {
-      setError(friendly(e, 'Could not send code'));
+      setError(friendly(e, 'Could not send reset code'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const confirmReset = async () => {
+    const clean = email.trim().toLowerCase();
+    if (!EMAIL_RE.test(clean)) {
+      setError('Enter the email address of your account first.');
+      return;
+    }
+    if (!code.trim()) {
+      setError('Enter the reset code from your email.');
+      return;
+    }
+    if (newPassword.length < 8) {
+      setError('New password must be at least 8 characters long.');
+      return;
+    }
+    if (newPassword !== confirmNew) {
+      setError('New passwords do not match. Please re-enter.');
+      return;
+    }
+    setError(null);
+    setStatus(null);
+    setBusy(true);
+    try {
+      const r = await authApi.resetPassword(clean, code.trim(), newPassword);
+      setStatus(r.message || 'Password updated. Please sign in.');
+      setCode('');
+      setNewPassword('');
+      setConfirmNew('');
+      setPassword('');
+      setStage('auth');
+      setMode('login');
+    } catch (e: any) {
+      setError(friendly(e, 'Password reset failed'));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -236,10 +311,10 @@ export function AuthForm() {
         <div className="relative z-10 border-t lg:border-t-0 lg:border-l border-white/[0.08] bg-[#150D31]/40 backdrop-blur-2xl p-6 sm:p-8 flex flex-col">
           <div className="flex items-center justify-end text-[14px]">
             <button
-              onClick={() => switchMode(isLogin ? 'signup' : 'login')}
+              onClick={() => ((verify || stage !== 'auth') ? backToLogin() : switchMode(isLogin ? 'signup' : 'login'))}
               className="rounded-full border border-[#8B5CF6]/50 bg-[#8B5CF6]/10 backdrop-blur-md px-4 py-1.5 font-semibold text-white hover:bg-[#8B5CF6]/20 transition-colors shadow-[inset_0_1px_0_rgba(255,255,255,0.15)]"
             >
-              {verify ? 'Back to login' : isLogin ? 'Create account' : 'Sign in'}
+              {(verify || stage !== 'auth') ? 'Back to login' : isLogin ? 'Create account' : 'Sign in'}
             </button>
           </div>
 
@@ -276,6 +351,105 @@ export function AuthForm() {
                     Resend code
                   </button>
                   <button className="text-[#8E86AD] hover:text-white transition-colors" onClick={() => setVerify(false)}>Back</button>
+                </div>
+              </>
+            ) : stage === 'forgot' ? (
+              <>
+                <h2 className="text-[30px] font-extrabold tracking-tight">Reset password</h2>
+                <p className="mt-1.5 text-[14px] text-[#9C92C0]">Enter your account email and we&apos;ll send a reset code.</p>
+
+                {error && <div className="mt-4 text-[13px] leading-5 text-[#FF9AA8] bg-[#FF5C7A]/10 border border-[#FF5C7A]/25 rounded-xl px-3.5 py-3">{error}</div>}
+                {status && <div className="mt-4 text-[13px] leading-5 text-[#C4B5FD] bg-[#8B5CF6]/10 border border-[#8B5CF6]/30 rounded-xl px-3.5 py-3">{status}</div>}
+
+                <div className="relative mt-5">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#EDE9FE]">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2.5" stroke="currentColor" strokeWidth="1.7"/><path d="m4 7 8 6 8-6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  </span>
+                  <input
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Email address"
+                    type="email"
+                    autoComplete="email"
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !busy) sendResetCode(); }}
+                    className="w-full rounded-xl border border-white/10 glass-input pl-11 pr-4 py-3.5 text-[14px] placeholder:text-[#6F668F] outline-none focus:border-[#8B5CF6]/70 focus:ring-2 focus:ring-[#8B5CF6]/20 transition"
+                  />
+                </div>
+                <button
+                  onClick={sendResetCode}
+                  disabled={busy}
+                  className="mt-4 w-full rounded-xl bg-gradient-to-r from-[#8B5CF6] to-[#6D28D9] px-4 py-3.5 font-bold text-[15px] shadow-[0_10px_30px_-8px_rgba(139,92,246,0.7)] hover:brightness-110 active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed transition"
+                >
+                  {busy ? 'Sending…' : 'Send reset code →'}
+                </button>
+                <div className="mt-4 text-center text-[13px]">
+                  <button className="text-[#8E86AD] hover:text-white transition-colors" onClick={backToLogin}>Back to sign in</button>
+                </div>
+              </>
+            ) : stage === 'reset' ? (
+              <>
+                <h2 className="text-[30px] font-extrabold tracking-tight">Choose a new password</h2>
+                <p className="mt-1.5 text-[14px] text-[#9C92C0]">Enter the code sent to <span className="text-white font-semibold">{email || 'your inbox'}</span>, then pick a new password.</p>
+
+                {error && <div className="mt-4 text-[13px] leading-5 text-[#FF9AA8] bg-[#FF5C7A]/10 border border-[#FF5C7A]/25 rounded-xl px-3.5 py-3">{error}</div>}
+                {status && <div className="mt-4 text-[13px] leading-5 text-[#C4B5FD] bg-[#8B5CF6]/10 border border-[#8B5CF6]/30 rounded-xl px-3.5 py-3">{status}</div>}
+
+                <label className="mt-5 block text-[13px] font-medium text-[#9C92C0]">Reset code</label>
+                <input
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  inputMode="numeric"
+                  maxLength={6}
+                  placeholder="0 0 0 0 0 0"
+                  className="mt-2 w-full rounded-xl border border-white/10 glass-input px-4 py-3.5 text-center text-[20px] font-bold tracking-[0.5em] placeholder:text-[#5B5478] placeholder:tracking-[0.5em] outline-none focus:border-[#8B5CF6]/70 focus:ring-2 focus:ring-[#8B5CF6]/25 transition"
+                />
+                <div className="relative mt-3.5">
+                  <input
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="New password (8+ characters)"
+                    type={show ? 'text' : 'password'}
+                    autoComplete="new-password"
+                    className="w-full rounded-xl border border-white/10 glass-input px-4 py-3.5 text-[14px] placeholder:text-[#6F668F] outline-none focus:border-[#8B5CF6]/70 focus:ring-2 focus:ring-[#8B5CF6]/20 transition"
+                  />
+                </div>
+                {newPassword.length > 0 && (
+                  <div className="mt-2.5 flex items-center gap-2.5 px-0.5">
+                    <div className="flex-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
+                      <div className="h-full rounded-full bg-gradient-to-r from-[#8B5CF6] to-[#A78BFA] transition-all" style={{ width: `${newPw.pct}%` }} />
+                    </div>
+                    <span className="text-[12px] text-[#9C92C0]">Strength: <b className="text-white">{newPw.label}</b></span>
+                  </div>
+                )}
+                <div className="relative mt-3.5">
+                  <input
+                    value={confirmNew}
+                    onChange={(e) => setConfirmNew(e.target.value)}
+                    placeholder="Confirm new password"
+                    type={show ? 'text' : 'password'}
+                    autoComplete="new-password"
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !busy) confirmReset(); }}
+                    className="w-full rounded-xl border border-white/10 glass-input px-4 py-3.5 text-[14px] placeholder:text-[#6F668F] outline-none focus:border-[#8B5CF6]/70 focus:ring-2 focus:ring-[#8B5CF6]/20 transition"
+                  />
+                </div>
+                {confirmNew.length > 0 && confirmNew !== newPassword && (
+                  <p className="mt-2 text-[12px] text-[#FF9AA8] px-0.5">Passwords do not match</p>
+                )}
+                <button
+                  onClick={confirmReset}
+                  disabled={busy}
+                  className="mt-4 w-full rounded-xl bg-gradient-to-r from-[#8B5CF6] to-[#6D28D9] px-4 py-3.5 font-bold text-[15px] shadow-[0_10px_30px_-8px_rgba(139,92,246,0.7)] hover:brightness-110 active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed transition"
+                >
+                  {busy ? 'Updating…' : 'Set new password →'}
+                </button>
+                <div className="mt-4 flex items-center justify-between text-[13px]">
+                  <button
+                    className="text-[#A78BFA] hover:text-white transition-colors"
+                    onClick={sendResetCode}
+                  >
+                    Resend code
+                  </button>
+                  <button className="text-[#8E86AD] hover:text-white transition-colors" onClick={backToLogin}>Back to sign in</button>
                 </div>
               </>
             ) : (
@@ -384,7 +558,7 @@ export function AuthForm() {
                         </button>
                         Remember me
                       </label>
-                      <button onClick={forgot} className="text-[#A78BFA] hover:text-white font-medium transition-colors">Forgot password?</button>
+                      <button onClick={() => { setError(null); setStatus(null); setStage('forgot'); }} className="text-[#A78BFA] hover:text-white font-medium transition-colors">Forgot password?</button>
                     </div>
                   ) : (
                     <p className="text-[12px] leading-5 text-[#8E86AD] px-0.5">
@@ -439,7 +613,8 @@ export function AuthForm() {
 
                       <button
                         onClick={() => {
-                          const cid = process.env.NEXT_PUBLIC_GITHUB_CLIENT_ID || 'Ov23liE4xyqjejKLJwJb';
+                          const cid = process.env.NEXT_PUBLIC_GITHUB_CLIENT_ID || '';
+                          if (!cid) { setError('GitHub login is not configured in this build.'); return; }
                           const redirect = `${window.location.origin}/auth/github/callback`;
                           window.location.href =
                             `https://github.com/login/oauth/authorize?client_id=${encodeURIComponent(cid)}` +
