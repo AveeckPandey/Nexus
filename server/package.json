@@ -29,6 +29,8 @@
     "@socket.io/redis-adapter": "^8.3.0",
     "aws-jwt-verify": "^4.0.1",
     "axios": "^1.8.1",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.15.1",
     "expo-server-sdk": "^3.13.0",
     "groq-sdk": "^0.15.0",
     "ioredis": "^6.0.0",

@@ -8,7 +8,7 @@ import {
   FastifyAdapter,
   NestFastifyApplication,
 } from '@nestjs/platform-fastify';
-import { Logger } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { RedisIoAdapter } from './common/adapters/redis-io.adapter';
@@ -51,6 +51,12 @@ async function bootstrap() {
   app.useWebSocketAdapter(redisAdapter);
 
   app.useGlobalFilters(new AllExceptionsFilter());
+
+  // Reject malformed/oversized input with 400 before it reaches handlers.
+  // DTOs in each module declare the contract; unknown props are stripped.
+  app.useGlobalPipes(
+    new ValidationPipe({ whitelist: true, transform: true, forbidUnknownValues: false }),
+  );
 
   const port = Number(process.env.PORT || 8080);
   await app.listen(port, '0.0.0.0');

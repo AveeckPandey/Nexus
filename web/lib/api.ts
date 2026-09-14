@@ -74,6 +74,7 @@ export const authApi = {
   login: (email: string, password: string) =>
     api.post('/api/auth/login', { email, password }).then((r) => r.data),
   google: (credential: string) => api.post('/api/auth/google', { credential }).then((r) => r.data),
+  github: (code: string) => api.post('/api/auth/github', { code }).then((r) => r.data),
   me: () => api.get('/api/auth/me').then((r) => r.data),
   profile: (patch: { language?: string; name?: string; username?: string; x25519PublicKey?: string; avatarUrl?: string; about?: string }) =>
     api.patch('/api/auth/profile', patch).then((r) => r.data),

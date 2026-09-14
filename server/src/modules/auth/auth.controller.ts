@@ -13,11 +13,19 @@ import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { CognitoAuthGuard } from '../../common/guards/cognito-auth.guard';
 import {
+  ConfirmDto,
+  GithubDto,
+  GoogleDto,
+  LoginDto,
+  RefreshDto,
+  ResendDto,
+  SignUpDto,
+  UpdateProfileDto,
+} from './dto';
+import {
   CurrentUser,
   AuthenticatedUser,
 } from '../../common/decorators/current-user.decorator';
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 @Throttle({ default: { limit: 15, ttl: 60000 } })
 @Controller('api/auth')
@@ -30,10 +38,7 @@ export class AuthController {
   }
 
   @Post('signup')
-  signup(@Body() b: { email?: string; password?: string; name?: string; username?: string }) {
-    if (!b.email || !EMAIL_RE.test(b.email)) throw new BadRequestException('Valid email required');
-    if (!b.password || b.password.length < 8)
-      throw new BadRequestException('Password must be 8+ characters');
+  signup(@Body() b: SignUpDto) {
     return this.auth.signUp({
       email: b.email.toLowerCase(),
       password: b.password,
@@ -43,31 +48,32 @@ export class AuthController {
   }
 
   @Post('confirm')
-  confirm(@Body() b: { email?: string; code?: string }) {
-    if (!b.email || !b.code) throw new BadRequestException('Email and code required');
+  confirm(@Body() b: ConfirmDto) {
     return this.auth.confirmSignUp({ email: b.email.toLowerCase(), code: b.code });
   }
 
   @Post('resend-code')
-  resend(@Body() b: { email?: string }) {
-    if (!b.email) throw new BadRequestException('Email required');
+  resend(@Body() b: ResendDto) {
     return this.auth.resendCode({ email: b.email.toLowerCase() });
   }
 
   @Post('login')
-  login(@Body() b: { email?: string; password?: string }) {
-    if (!b.email || !b.password) throw new BadRequestException('Email and password required');
+  login(@Body() b: LoginDto) {
     return this.auth.login({ email: b.email.toLowerCase(), password: b.password });
   }
 
   @Post('google')
-  google(@Body() b: { credential?: string }) {
+  google(@Body() b: GoogleDto) {
     return this.auth.googleLogin({ credential: b.credential });
   }
 
+  @Post('github')
+  github(@Body() b: GithubDto) {
+    return this.auth.githubLogin({ code: b.code });
+  }
+
   @Post('refresh')
-  refresh(@Body() b: { refreshToken?: string }) {
-    if (!b.refreshToken) throw new BadRequestException('refreshToken required');
+  refresh(@Body() b: RefreshDto) {
     return this.auth.refresh(b.refreshToken);
   }
 
@@ -130,7 +136,7 @@ export class AuthController {
   @UseGuards(CognitoAuthGuard)
   async profile(
     @CurrentUser() u: AuthenticatedUser,
-    @Body() b: { language?: string; name?: string; username?: string; x25519PublicKey?: string; avatarUrl?: string; about?: string },
+    @Body() b: UpdateProfileDto,
   ) {
     if (!b.language && !b.name && !b.x25519PublicKey && !b.username && !b.avatarUrl && b.about === undefined) {
       throw new BadRequestException('Nothing to update');

@@ -2,6 +2,8 @@ import {
   Injectable,
   Logger,
   BadRequestException,
+  HttpException,
+  HttpStatus,
   UnauthorizedException,
 } from '@nestjs/common';
 import axios from 'axios';
@@ -56,6 +58,21 @@ function decodeJwt(token: string): any {
   }
 }
 
+/**
+ * Map AWS/Cognito errors to safe client messages. Raw `err.message` leaks
+ * internals ("UserNotFoundException", pool IDs) and enables enumeration.
+ */
+function cognitoErrorMessage(err: any, fallback: string): string {
+  const name = err?.name || '';
+  if (name.includes('UsernameExists')) return 'Account exists already — sign in instead.';
+  if (name.includes('InvalidPassword')) return 'Password does not meet requirements.';
+  if (name.includes('CodeMismatch') || name.includes('ExpiredCode'))
+    return 'Invalid or expired confirmation code.';
+  if (name.includes('TooManyRequests') || name.includes('LimitExceeded'))
+    return 'Too many attempts. Please try again later.';
+  return fallback;
+}
+
 /** Web-native invite handles: @aveeck — 3–20 chars, lowercase alnum + underscore. */
 import {
   USERNAME_RE,
@@ -92,7 +109,7 @@ export class AuthService {
         throw new BadRequestException('Account exists already — sign in instead.');
       }
       const salt = crypto.randomBytes(16).toString('hex');
-      const hash = crypto.pbkdf2Sync(dto.password, salt, 1000, 64, 'sha512').toString('hex');
+      const hash = AuthService.hashPassword(dto.password, salt);
       const userId = uuidv4();
       await this.db.put({
         PK: `AUTH#${cleanEmail}`,
@@ -140,7 +157,7 @@ export class AuthService {
           : 'Verification code sent to your email address.',
       };
     } catch (err: any) {
-      throw new BadRequestException(err.message || 'Sign up failed');
+      throw new BadRequestException(cognitoErrorMessage(err, 'Sign up failed. Please try again.'));
     }
   }
 
@@ -160,7 +177,9 @@ export class AuthService {
       );
       return { success: true, message: 'Account verified. You may now sign in.' };
     } catch (err: any) {
-      throw new BadRequestException(err.message || 'Invalid confirmation code');
+      throw new BadRequestException(
+        cognitoErrorMessage(err, 'Invalid confirmation code. Please try again.'),
+      );
     }
   }
 
@@ -179,18 +198,19 @@ export class AuthService {
       );
       return { success: true, message: 'Confirmation code resent.' };
     } catch (err: any) {
-      throw new BadRequestException(err.message || 'Resend failed');
+      throw new BadRequestException(cognitoErrorMessage(err, 'Resend failed. Please try again.'));
     }
   }
 
   async login(dto: { email: string; password: string }) {
     const cleanEmail = dto.email.trim().toLowerCase();
+    await this.checkLoginLock(cleanEmail);
     if (!hasCognito()) {
       this.logger.log(`Local dev login for ${cleanEmail}`);
       let cred = await this.db.get(`AUTH#${cleanEmail}`, 'CRED');
       if (!cred) {
         const salt = crypto.randomBytes(16).toString('hex');
-        const hash = crypto.pbkdf2Sync(dto.password, salt, 1000, 64, 'sha512').toString('hex');
+        const hash = AuthService.hashPassword(dto.password, salt);
         const userId = uuidv4();
         await this.db.put({
           PK: `AUTH#${cleanEmail}`,
@@ -209,10 +229,27 @@ export class AuthService {
         });
         cred = { userId, salt, hash };
       } else {
-        const hash = crypto.pbkdf2Sync(dto.password, cred.salt, 1000, 64, 'sha512').toString('hex');
-        if (hash !== cred.hash) {
-          throw new UnauthorizedException('Incorrect email or password.');
+        if (!this.verifyPassword(dto.password, cred.salt, cred.hash)) {
+          // Transparent upgrade: accounts hashed with legacy 1,000 iterations.
+          if (this.verifyPasswordLegacy(dto.password, cred.salt, cred.hash)) {
+            const salt = crypto.randomBytes(16).toString('hex');
+            const hash = AuthService.hashPassword(dto.password, salt);
+            await this.db.put({
+              PK: `AUTH#${cleanEmail}`,
+              SK: 'CRED',
+              userId: cred.userId,
+              email: cleanEmail,
+              salt,
+              hash,
+              createdAt: cred.createdAt || new Date().toISOString(),
+            });
+            cred = { ...cred, salt, hash };
+          } else {
+            await this.recordLoginFail(cleanEmail);
+            throw new UnauthorizedException('Incorrect email or password.');
+          }
         }
+        await this.clearLoginFails(cleanEmail);
       }
       let user = await this.getProfile(cred.userId);
       if (!user) {
@@ -254,7 +291,10 @@ export class AuthService {
         }),
       );
       const idToken = r.AuthenticationResult?.IdToken;
-      if (!idToken) throw new UnauthorizedException('Authentication failed');
+      if (!idToken) {
+        await this.recordLoginFail(cleanEmail);
+        throw new UnauthorizedException('Invalid email or password.');
+      }
       const d = decodeJwt(idToken);
       const user = await this.syncProfile({
         userId: d?.sub,
@@ -271,7 +311,82 @@ export class AuthService {
         user,
       };
     } catch (err: any) {
-      throw new UnauthorizedException(err.message || 'Invalid email or password');
+      if (err instanceof UnauthorizedException) throw err;
+      // Never leak AWS/Cognito internals (user-enumeration + impl details).
+      this.logger.warn(`Cognito login failed for ${cleanEmail}: ${err?.name || 'AuthError'}`);
+      await this.recordLoginFail(cleanEmail);
+      throw new UnauthorizedException('Invalid email or password.');
+    }
+  }
+
+  // --- Brute-force lockout (5 fails → 15-min lock, shared across pods) ---
+  private static readonly LOGIN_MAX_FAILS = 5;
+  private static readonly LOGIN_LOCK_TTL = 900;
+
+  private async checkLoginLock(email: string): Promise<void> {
+    try {
+      const locked = await this.redis.get(`auth:lock:${email}`);
+      if (locked) {
+        throw new HttpException(
+          'Account temporarily locked after too many failed attempts. Try again in 15 minutes.',
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+    }
+  }
+
+  private async recordLoginFail(email: string): Promise<void> {
+    try {
+      const hits = await this.redis.incr(`auth:fail:${email}`);
+      if (hits === 1) await this.redis.expire(`auth:fail:${email}`, AuthService.LOGIN_LOCK_TTL);
+      if (hits >= AuthService.LOGIN_MAX_FAILS) {
+        await this.redis.set(`auth:lock:${email}`, '1', 'EX', AuthService.LOGIN_LOCK_TTL);
+        await this.redis.del(`auth:fail:${email}`);
+      }
+    } catch {}
+  }
+
+  private async clearLoginFails(email: string): Promise<void> {
+    try {
+      await this.redis.del(`auth:fail:${email}`);
+    } catch {}
+  }
+
+  // --- Password hashing (dev fallback only; Cognito handles prod) ---
+  private static readonly PBKDF2_ITERATIONS = 210_000;
+
+  private static hashPassword(password: string, salt: string): string {
+    return crypto
+      .pbkdf2Sync(password, salt, AuthService.PBKDF2_ITERATIONS, 64, 'sha512')
+      .toString('hex');
+  }
+
+  /** Timing-safe compare — plain `!==` leaks prefix info via short-circuit. */
+  private verifyPassword(password: string, salt: string, expectedHex: string): boolean {
+    try {
+      const actual = Buffer.from(AuthService.hashPassword(password, salt), 'hex');
+      const expected = Buffer.from(expectedHex, 'hex');
+      if (actual.length !== expected.length) return false;
+      return crypto.timingSafeEqual(actual, expected);
+    } catch {
+      return false;
+    }
+  }
+
+  /** Pre-hardening hashes (1,000 iterations). Verify-only; callers re-hash. */
+  private verifyPasswordLegacy(password: string, salt: string, expectedHex: string): boolean {
+    try {
+      const actual = Buffer.from(
+        crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex'),
+        'hex',
+      );
+      const expected = Buffer.from(expectedHex, 'hex');
+      if (actual.length !== expected.length) return false;
+      return crypto.timingSafeEqual(actual, expected);
+    } catch {
+      return false;
     }
   }
 
@@ -308,6 +423,70 @@ export class AuthService {
       username: email.split('@')[0],
       name: name || email.split('@')[0],
       avatarUrl: picture,
+    });
+    const idToken = this.tokens.mintSessionToken({
+      userId: user.userId,
+      email: user.email,
+      username: user.username,
+      name: user.name,
+      avatarUrl: user.avatarUrl,
+    });
+    return { success: true, idToken, accessToken: idToken, user };
+  }
+
+  /** Verify a GitHub OAuth code, sync profile, mint a server session JWT. */
+  async githubLogin(dto: { code?: string }) {
+    if (!dto.code) throw new BadRequestException('GitHub code required');
+    const clientId = process.env.GITHUB_CLIENT_ID || '';
+    const clientSecret = process.env.GITHUB_CLIENT_SECRET || '';
+    if (!clientId || !clientSecret) {
+      throw new BadRequestException('GitHub login is not configured on this server');
+    }
+    let accessToken = '';
+    try {
+      const t = await axios.post(
+        'https://github.com/login/oauth/access_token',
+        { client_id: clientId, client_secret: clientSecret, code: dto.code },
+        { headers: { Accept: 'application/json' }, timeout: 5000 },
+      );
+      accessToken = t.data?.access_token;
+    } catch {
+      throw new UnauthorizedException('Invalid GitHub code');
+    }
+    if (!accessToken) throw new UnauthorizedException('Invalid GitHub code');
+    let id = '';
+    let login = '';
+    let name = '';
+    let avatarUrl: string | undefined;
+    let email = '';
+    try {
+      const u = await axios.get('https://api.github.com/user', {
+        headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/vnd.github+json' },
+        timeout: 5000,
+      });
+      id = String(u.data.id || '');
+      login = u.data.login || '';
+      name = u.data.name || '';
+      avatarUrl = u.data.avatar_url;
+      email = u.data.email || '';
+      if (!email) {
+        const e = await axios.get('https://api.github.com/user/emails', {
+          headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/vnd.github+json' },
+          timeout: 5000,
+        });
+        email = e.data?.find((x: any) => x.primary)?.email || e.data?.[0]?.email || '';
+      }
+    } catch {
+      throw new UnauthorizedException('Invalid GitHub code');
+    }
+    if (!id || !email) throw new UnauthorizedException('GitHub email unavailable');
+    const userId = `github_${id}`;
+    const user = await this.syncProfile({
+      userId,
+      email,
+      username: login || email.split('@')[0],
+      name: name || login || email.split('@')[0],
+      avatarUrl,
     });
     const idToken = this.tokens.mintSessionToken({
       userId: user.userId,
