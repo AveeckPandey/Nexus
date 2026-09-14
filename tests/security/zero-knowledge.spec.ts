@@ -64,6 +64,9 @@ describe('zero-knowledge: server never sees plaintext', () => {
     const stored = await chat.getConversation(conv.id);
     expect(stored?.lastMessage?.content).toBe('🔒 Encrypted message');
     expect(stored?.lastMessage?.content).not.toContain('secret plans');
+    // Push fans out in background (non-blocking hot path) — flush macrotasks.
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setTimeout(r, 10));
     expect(sent).toHaveLength(1);
     expect(sent[0].body).toBe('🔒 Encrypted message');
   });

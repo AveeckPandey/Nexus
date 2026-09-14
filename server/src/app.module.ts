@@ -1,5 +1,10 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { RedisModule } from './common/redis/redis.module';
+import { RedisService } from './common/redis/redis.service';
+import { RedisThrottlerStorage } from './common/throttle/redis-throttler.storage';
 import { DynamoDbModule } from './modules/dynamodb/dynamodb.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ChatModule } from './modules/chat/chat.module';
@@ -14,6 +19,15 @@ import { AppController } from './app.controller';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    RedisModule,
+    ThrottlerModule.forRootAsync({
+      imports: [RedisModule],
+      inject: [RedisService],
+      useFactory: (redis: RedisService) => ({
+        throttlers: [{ name: 'default', ttl: 60000, limit: 120 }],
+        storage: new RedisThrottlerStorage(redis),
+      }),
+    }),
     DynamoDbModule,
     AuthModule,
     ChatModule,
@@ -25,5 +39,12 @@ import { AppController } from './app.controller';
     NotificationsModule,
   ],
   controllers: [AppController],
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+  ],
 })
 export class AppModule {}
+

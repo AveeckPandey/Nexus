@@ -1,6 +1,10 @@
 # ElastiCache Redis replication group backing the Socket.IO redis adapter
 # for multi-pod / multi-node broadcast. Transit + at-rest encryption on;
 # the auth token lives in Secrets Manager (never in plain outputs).
+# SCALE NOTE (50k/100k): standard pub/sub replicates every broadcast to all
+# nodes (single-threaded). 50k needs 3+ clusters (default); 100k needs Redis 7+
+# sharded SPUBLISH or Kafka/NATS JetStream + SQS/Kinesis write buffer for
+# DynamoDB hot CONV# partitions. Push DLQ key `push:dlq:*` is the SQS seam.
 resource "random_password" "redis_auth" {
   length  = 32
   special = false

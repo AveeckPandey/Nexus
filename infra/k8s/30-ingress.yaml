@@ -13,7 +13,7 @@ metadata:
     alb.ingress.kubernetes.io/target-type: ip
     # Critical for persistent WebSockets:
     alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=3600
-    alb.ingress.kubernetes.io/target-group-attributes: stickiness.enabled=true,stickiness.lb_cookie.duration_seconds=86400,load_balancing.algorithm.type=least_outstanding_requests
+    alb.ingress.kubernetes.io/target-group-attributes: stickiness.enabled=true,stickiness.lb_cookie.duration_seconds=86400,load_balancing.algorithm.type=least_outstanding_requests,deregistration_delay.timeout_seconds=30,slow_start.duration_seconds=30
 spec:
   rules:
     - host: nexus.yourdomain.com

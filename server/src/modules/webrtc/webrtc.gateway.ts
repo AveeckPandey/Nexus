@@ -7,19 +7,54 @@ import {
   MessageBody,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
+import { Optional } from '@nestjs/common';
 import { WebRtcService } from './webrtc.service';
 import { TokenService } from '../../common/auth/token.service';
+import { RedisService } from '../../common/redis/redis.service';
 
-@WebSocketGateway({ cors: { origin: true, credentials: true } })
+const allowedOrigins = (process.env.CLIENT_ORIGIN || 'http://localhost:3000')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+@WebSocketGateway({
+  cors: {
+    origin: (origin: string, callback: (err: Error | null, allow?: boolean) => void) => {
+      if (!origin || allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
+        callback(null, true);
+      } else {
+        callback(new Error('Origin not allowed'), false);
+      }
+    },
+    credentials: true,
+  },
+})
 export class WebRtcGateway implements OnGatewayConnection {
   @WebSocketServer() server: Server;
 
   constructor(
     private readonly calls: WebRtcService,
     private readonly tokens: TokenService,
+    @Optional() private readonly redis?: RedisService,
   ) {}
 
+  private async checkConnThrottle(client: Socket): Promise<boolean> {
+    try {
+      const fwd = (client.handshake.headers?.['x-forwarded-for'] as string)?.split(',')[0]?.trim();
+      const ip = fwd || client.handshake.address || 'unknown';
+      const hits = await this.redis?.incr(`throttle:ws:${ip}`);
+      if (hits === 1) await this.redis?.expire(`throttle:ws:${ip}`, 60);
+      if ((hits || 0) > 60) {
+        client.emit('rate_limited', { message: 'Too many connections. Slow down.' });
+        client.disconnect(true);
+        return false;
+      }
+    } catch {}
+    return true;
+  }
+
   async handleConnection(client: Socket) {
+    if (!(await this.checkConnThrottle(client))) return;
     try {
       const token = (client.handshake.auth?.token as string) || '';
       if (token && token.startsWith('guest')) {
@@ -73,11 +108,11 @@ export class WebRtcGateway implements OnGatewayConnection {
   }
 
   @SubscribeMessage('call_accept')
-  accept(
+  async accept(
     @ConnectedSocket() c: Socket,
     @MessageBody() d: { callId: string; conversationId: string },
   ) {
-    const call = this.calls.getCall(d.callId);
+    const call = await this.calls.getCall(d.callId);
     if (!call) return { status: 'error', message: 'Call not found' };
     if (call.participants.size >= 5) {
       c.emit('call_rejected', {
@@ -89,6 +124,8 @@ export class WebRtcGateway implements OnGatewayConnection {
     c.join(d.callId);
     call.status = 'active';
     call.participants.add(c.id);
+    this.calls.updateCall(call);
+
     this.server.to(d.callId).emit('call_started', {
       callId: d.callId,
       peerId: c.id,

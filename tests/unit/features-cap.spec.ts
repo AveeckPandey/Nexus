@@ -36,7 +36,7 @@ jest.mock('../../server/src/config/groq.config', () => {
 
 describe('features-cap: WebRTC 5-peer limit, AI Bot, Transcribe & Ghost Chat', () => {
   describe('WebRTC 5-Peer Capacity Limit', () => {
-    test('enforces maximum 5 participants for P2P mesh and rejects the 6th participant', () => {
+    test('enforces maximum 5 participants for P2P mesh and rejects the 6th participant', async () => {
       const calls = new WebRtcService();
       const mockTokens = { verify: jest.fn() } as any;
       const gateway = new WebRtcGateway(calls, mockTokens);
@@ -63,11 +63,11 @@ describe('features-cap: WebRTC 5-peer limit, AI Bot, Transcribe & Ghost Chat', (
           join: jest.fn(),
           emit: jest.fn(),
         };
-        const acceptRes = gateway.accept(peerSocket, { callId, conversationId: 'c1' });
+        const acceptRes = await gateway.accept(peerSocket, { callId, conversationId: 'c1' });
         expect(acceptRes.status).toBe('accepted');
       }
 
-      const activeCall = calls.getCall(callId);
+      const activeCall = await calls.getCall(callId);
       expect(activeCall?.participants.size).toBe(5);
 
       // Peer 5 (6th participant) attempts to join
@@ -77,7 +77,7 @@ describe('features-cap: WebRTC 5-peer limit, AI Bot, Transcribe & Ghost Chat', (
         join: jest.fn(),
         emit: jest.fn(),
       };
-      const rejectRes = gateway.accept(peer6Socket, { callId, conversationId: 'c1' });
+      const rejectRes = await gateway.accept(peer6Socket, { callId, conversationId: 'c1' });
 
       expect(rejectRes.status).toBe('full');
       expect(peer6Socket.emit).toHaveBeenCalledWith('call_rejected', {

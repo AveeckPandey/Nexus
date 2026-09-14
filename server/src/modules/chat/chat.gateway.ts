@@ -7,26 +7,53 @@ import {
   ConnectedSocket,
   MessageBody,
 } from '@nestjs/websockets';
-import { Logger } from '@nestjs/common';
+import { Logger, Optional } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { ChatService } from './chat.service';
 import { TokenService } from '../../common/auth/token.service';
 import { AiService } from '../ai/ai.service';
+import { RedisService } from '../../common/redis/redis.service';
 
-@WebSocketGateway({ cors: { origin: true, credentials: true } })
+const allowedOrigins = (process.env.CLIENT_ORIGIN || 'http://localhost:3000')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+@WebSocketGateway({
+  cors: {
+    origin: (origin: string, callback: (err: Error | null, allow?: boolean) => void) => {
+      if (!origin || allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
+        callback(null, true);
+      } else {
+        callback(new Error('Origin not allowed'), false);
+      }
+    },
+    credentials: true,
+  },
+})
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer() server: Server;
   private readonly logger = new Logger(ChatGateway.name);
-
-  private readonly lastAiInvocation = new Map<string, number>();
 
   constructor(
     private readonly chat: ChatService,
     private readonly tokens: TokenService,
     private readonly ai: AiService,
+    @Optional() private readonly redis?: RedisService,
   ) {}
 
   async handleConnection(client: Socket) {
+    try {
+      const fwd = (client.handshake.headers?.['x-forwarded-for'] as string)?.split(',')[0]?.trim();
+      const ip = fwd || client.handshake.address || 'unknown';
+      const hits = await this.redis?.incr(`throttle:ws:${ip}`);
+      if (hits === 1) await this.redis?.expire(`throttle:ws:${ip}`, 60);
+      if ((hits || 0) > 60) {
+        client.emit('rate_limited', { message: 'Too many connections. Slow down.' });
+        client.disconnect(true);
+        return;
+      }
+    } catch {}
     try {
       const token = (client.handshake.auth?.token as string) || '';
       if (token && token.startsWith('guest')) {
@@ -76,18 +103,36 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       isEncrypted?: boolean;
       nonce?: string;
       encVersion?: number;
+      isBot?: boolean;
     },
   ) {
     const senderId = c.data.userId || 'anonymous';
     if (c.data.userId && !(await this.chat.isMember(d.conversationId, c.data.userId))) {
       return { error: 'Forbidden' };
     }
+
+    // 1. Sliding window per-socket message rate limit (max 15 msg/sec)
+    const nowTs = Date.now();
+    const msgCount = (c.data.msgCount || 0) + 1;
+    const windowStart = c.data.windowStart || nowTs;
+    if (nowTs - windowStart < 1000) {
+      if (msgCount > 15) {
+        return { status: 'rate_limited', message: 'Too many messages sent. Please slow down.' };
+      }
+      c.data.msgCount = msgCount;
+    } else {
+      c.data.windowStart = nowTs;
+      c.data.msgCount = 1;
+    }
+
+    const isFromAiOrBot = senderId === 'nexus-ai' || d.senderName === 'Nexus AI' || senderId.startsWith('bot_') || Boolean(d.isBot || d.senderAvatar?.includes('alien'));
+
     const msg = await this.chat.saveMessage(
       d.conversationId,
       senderId,
       d.senderName || c.data.username || 'User',
       d.content,
-      d.mediaType || 'text',
+      d.mediaType || (d as any).type || 'text',
       d.mediaUrl,
       d.replyTo,
       { isEncrypted: d.isEncrypted, nonce: d.nonce, encVersion: d.encVersion },
@@ -95,13 +140,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     );
     this.server.to(d.conversationId).emit('new_message', msg);
 
-    // If message is unencrypted and mentions Nexus AI (@nexus or @ai), trigger bot response
-    const isFromAiOrBot = senderId === 'nexus-ai' || d.senderName === 'Nexus AI' || senderId.startsWith('bot_');
+    // AI Companion mention check (@nexus or @ai) - Redis distributed rate limiter
     if (!isFromAiOrBot && !d.isEncrypted && d.content && /@nexus|@ai/i.test(d.content)) {
-      const now = Date.now();
-      const last = this.lastAiInvocation.get(d.conversationId) || 0;
-      if (now - last > 2500) {
-        this.lastAiInvocation.set(d.conversationId, now);
+      const lockKey = `ratelimit:ai:${d.conversationId}`;
+      const acquired = this.redis ? await this.redis.set(lockKey, '1', 'EX', 3) : 'OK';
+      if (acquired) {
         const callerName = d.senderName || c.data.username || 'User';
         (async () => {
           try {
@@ -147,6 +190,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() c: Socket,
     @MessageBody() d: { conversationId: string; username: string },
   ) {
+    const now = Date.now();
+    if (c.data.lastTyping && now - c.data.lastTyping < 1500) {
+      return; // Skip duplicate typing events within 1.5s
+    }
+    c.data.lastTyping = now;
     c.to(d.conversationId).emit('user_typing_start', {
       userId: c.data.userId,
       username: d.username,

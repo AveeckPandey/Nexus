@@ -5,10 +5,15 @@
  * authentication verification, round-trip message latency, and memory stability.
  */
 
-const { io } = require('../../web/node_modules/socket.io-client');
+let io;
+try {
+  io = require('socket.io-client').io || require('socket.io-client');
+} catch (e) {
+  io = require('../../web/node_modules/socket.io-client').io;
+}
 
-const SERVER_URL = 'http://localhost:8080';
-const TARGET_CONCURRENCY = 1000;
+const SERVER_URL = process.env.TARGET_URL || 'https://nexus.buildwithaveeck.com';
+const TARGET_CONCURRENCY = parseInt(process.env.CONCURRENCY || '1000', 10);
 const BATCH_SIZE = 50;
 const BATCH_INTERVAL_MS = 150;
 

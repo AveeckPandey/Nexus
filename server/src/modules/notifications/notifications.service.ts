@@ -1,7 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Expo, ExpoPushMessage } from 'expo-server-sdk';
 import * as webpush from 'web-push';
 import { DynamoDbService } from '../dynamodb/dynamodb.service';
+import { RedisService } from '../../common/redis/redis.service';
 import { VAPID_CONFIG } from '../../config/vapid.config';
 
 export interface DeviceTokenItem {
@@ -19,10 +20,29 @@ export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
   private readonly expo = new Expo();
 
-  constructor(private readonly db: DynamoDbService) {
+  constructor(
+    private readonly db: DynamoDbService,
+    @Optional() private readonly redis?: RedisService,
+  ) {
     if (VAPID_CONFIG.publicKey && VAPID_CONFIG.privateKey) {
       webpush.setVapidDetails(VAPID_CONFIG.subject, VAPID_CONFIG.publicKey, VAPID_CONFIG.privateKey);
     }
+  }
+
+  private tokensCacheKey(userId: string): string {
+    return `push:tokens:${userId}`;
+  }
+
+  private async getTokens(recipientId: string): Promise<DeviceTokenItem[]> {
+    try {
+      const hit = await this.redis?.getJson<DeviceTokenItem[]>(this.tokensCacheKey(recipientId));
+      if (hit) return hit;
+    } catch {}
+    const tokens = await this.db.queryByPk<DeviceTokenItem>(`USER#${recipientId}`, 'TOKEN#');
+    try {
+      await this.redis?.setJson(this.tokensCacheKey(recipientId), tokens, 300);
+    } catch {}
+    return tokens;
   }
 
   async registerToken(
@@ -41,6 +61,9 @@ export class NotificationsService {
       webPushSubscription,
       updatedAt: new Date().toISOString(),
     });
+    try {
+      await this.redis?.del(this.tokensCacheKey(userId));
+    } catch {}
   }
 
   async sendPushNotification(
@@ -50,7 +73,7 @@ export class NotificationsService {
     data: Record<string, any> = {},
   ) {
     try {
-      const tokens = await this.db.queryByPk<DeviceTokenItem>(`USER#${recipientId}`, 'TOKEN#');
+      const tokens = await this.getTokens(recipientId);
       if (!tokens.length) return;
       const expoMessages: ExpoPushMessage[] = [];
       for (const t of tokens) {

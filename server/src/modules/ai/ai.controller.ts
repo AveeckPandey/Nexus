@@ -5,9 +5,11 @@ import {
   UseGuards,
   BadRequestException,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { AiService } from './ai.service';
 import { CognitoAuthGuard } from '../../common/guards/cognito-auth.guard';
 
+@Throttle({ default: { limit: 15, ttl: 60000 } })
 @Controller('api/ai')
 export class AiController {
   constructor(private readonly ai: AiService) {}

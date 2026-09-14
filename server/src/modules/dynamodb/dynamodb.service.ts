@@ -78,6 +78,17 @@ export class DynamoDbService implements OnModuleInit, OnModuleDestroy {
     return this.mongoConnecting;
   }
 
+  private readonly MAX_DEV_MEMORY_ITEMS = 5000;
+
+  private safeMemorySet(key: string, item: any): void {
+    if (!this.useMemory()) return; // Never leak in-memory objects in production
+    if (this.memory.size >= this.MAX_DEV_MEMORY_ITEMS) {
+      const oldestKey = this.memory.keys().next().value;
+      if (oldestKey) this.memory.delete(oldestKey);
+    }
+    this.memory.set(key, { ...item });
+  }
+
   private useMemory(): boolean {
     if (!hasAwsCredentials() && !this.warned) {
       this.warned = true;
@@ -88,9 +99,40 @@ export class DynamoDbService implements OnModuleInit, OnModuleDestroy {
     return !hasAwsCredentials();
   }
 
+  private isThrottleError(err: any): boolean {
+    const name = err?.name || '';
+    const msg = err?.message || '';
+    return (
+      name.includes('Throttling') ||
+      name.includes('ThroughputExceeded') ||
+      name.includes('LimitExceeded') ||
+      name.includes('RequestLimitExceeded') ||
+      msg.includes('ThroughputExceeded') ||
+      msg.includes('throttl')
+    );
+  }
+
+  /** Retry throttled DynamoDB writes with backoff (hot CONV# partitions). */
+  private async sendWithRetry<T>(fn: () => Promise<T>, op: string): Promise<T | null> {
+    let lastErr: any = null;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      try {
+        return await fn();
+      } catch (err: any) {
+        lastErr = err;
+        if (!this.isThrottleError(err) || attempt === 3) break;
+        await new Promise((r) => setTimeout(r, 50 * 2 ** attempt));
+      }
+    }
+    this.logger.warn(`DynamoDB ${op} failed after retries: ${lastErr?.message}`);
+    return null;
+  }
+
   async put(item: Record<string, any>): Promise<void> {
     const key = `${item.PK}##${item.SK}`;
-    this.memory.set(key, { ...item });
+    if (this.useMemory()) {
+      this.safeMemorySet(key, item);
+    }
 
     const col = await this.getMongoCol();
     if (col) {
@@ -102,19 +144,16 @@ export class DynamoDbService implements OnModuleInit, OnModuleDestroy {
     }
 
     if (hasAwsCredentials()) {
-      try {
-        await dynamoDocumentClient.send(
-          new PutCommand({ TableName: this.tableName, Item: item }),
-        );
-      } catch (err: any) {
-        this.logger.warn(`DynamoDB put failed: ${err.message}`);
-      }
+      await this.sendWithRetry(
+        () => dynamoDocumentClient.send(new PutCommand({ TableName: this.tableName, Item: item })),
+        'put',
+      );
     }
   }
 
   async get<T = any>(pk: string, sk: string): Promise<T | null> {
     const key = `${pk}##${sk}`;
-    if (this.memory.has(key)) {
+    if (this.useMemory() && this.memory.has(key)) {
       return this.memory.get(key) as T;
     }
 
@@ -124,7 +163,7 @@ export class DynamoDbService implements OnModuleInit, OnModuleDestroy {
         const doc = await col.findOne({ _id: key as any });
         if (doc) {
           const { _id, ...rest } = doc;
-          this.memory.set(key, rest);
+          if (this.useMemory()) this.safeMemorySet(key, rest);
           return rest as T;
         }
       } catch (err: any) {
@@ -165,7 +204,7 @@ export class DynamoDbService implements OnModuleInit, OnModuleDestroy {
           .limit(limit)
           .toArray();
         return docs.map(({ _id, ...rest }) => {
-          this.memory.set(`${rest.PK}##${rest.SK}`, rest);
+          if (this.useMemory()) this.safeMemorySet(`${rest.PK}##${rest.SK}`, rest);
           return rest as T;
         });
       } catch (err: any) {
@@ -205,7 +244,9 @@ export class DynamoDbService implements OnModuleInit, OnModuleDestroy {
 
   async delete(pk: string, sk: string): Promise<void> {
     const key = `${pk}##${sk}`;
-    this.memory.delete(key);
+    if (this.useMemory()) {
+      this.memory.delete(key);
+    }
 
     const col = await this.getMongoCol();
     if (col) {
@@ -257,12 +298,17 @@ export class DynamoDbService implements OnModuleInit, OnModuleDestroy {
     attributeNames?: Record<string, string>,
   ): Promise<void> {
     const key = `${pk}##${sk}`;
-    let existing = this.memory.get(key);
+    let existing: any = null;
+    if (this.useMemory()) {
+      existing = this.memory.get(key);
+    }
     if (!existing) {
       existing = (await this.get(pk, sk)) || { PK: pk, SK: sk };
     }
     this.applyUpdateExpression(existing, updateExpression, values, attributeNames);
-    this.memory.set(key, existing);
+    if (this.useMemory()) {
+      this.safeMemorySet(key, existing);
+    }
 
     const col = await this.getMongoCol();
     if (col) {
@@ -274,19 +320,19 @@ export class DynamoDbService implements OnModuleInit, OnModuleDestroy {
     }
 
     if (!this.useMemory()) {
-      try {
-        await dynamoDocumentClient.send(
-          new UpdateCommand({
-            TableName: this.tableName,
-            Key: { PK: pk, SK: sk },
-            UpdateExpression: updateExpression,
-            ExpressionAttributeValues: values,
-            ExpressionAttributeNames: attributeNames,
-          }),
-        );
-      } catch (err: any) {
-        this.logger.warn(`DynamoDB update failed: ${err.message}`);
-      }
+      await this.sendWithRetry(
+        () =>
+          dynamoDocumentClient.send(
+            new UpdateCommand({
+              TableName: this.tableName,
+              Key: { PK: pk, SK: sk },
+              UpdateExpression: updateExpression,
+              ExpressionAttributeValues: values,
+              ExpressionAttributeNames: attributeNames,
+            }),
+          ),
+        'update',
+      );
     }
   }
 
@@ -302,7 +348,7 @@ export class DynamoDbService implements OnModuleInit, OnModuleDestroy {
     conditionExpression: string,
   ): Promise<boolean> {
     const key = `${pk}##${sk}`;
-    let existing = this.memory.get(key);
+    let existing = this.useMemory() ? this.memory.get(key) : null;
     if (!existing) {
       existing = await this.get(pk, sk);
     }
@@ -311,7 +357,9 @@ export class DynamoDbService implements OnModuleInit, OnModuleDestroy {
     if (consumed) return false;
     const next = { ...(existing || { PK: pk, SK: sk }) };
     this.applyUpdateExpression(next, updateExpression, values);
-    this.memory.set(key, next);
+    if (this.useMemory()) {
+      this.safeMemorySet(key, next);
+    }
 
     const col = await this.getMongoCol();
     if (col) {
@@ -434,28 +482,31 @@ export class DynamoDbService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    const all: T[] = [];
-    for (const v of this.memory.values()) {
-      if (v.PK === pk && (!skPrefix || v.SK?.startsWith(skPrefix))) all.push(v as T);
+    if (this.useMemory()) {
+      const all: T[] = [];
+      for (const v of this.memory.values()) {
+        if (v.PK === pk && (!skPrefix || v.SK?.startsWith(skPrefix))) all.push(v as T);
+      }
+      all.sort((a: any, b: any) =>
+        scanIndexForward ? (a.SK < b.SK ? -1 : 1) : a.SK > b.SK ? -1 : 1,
+      );
+      let start = 0;
+      if (cursor) {
+        const decoded = DynamoDbService.decodeCursor(cursor) as any;
+        const idx = all.findIndex((v: any) => v.SK === decoded?.SK);
+        if (idx >= 0) start = idx + 1;
+      }
+      const page = all.slice(start, start + limit);
+      const last: any = page[page.length - 1];
+      return {
+        items: page,
+        nextCursor:
+          start + limit < all.length && last
+            ? DynamoDbService.encodeCursor({ PK: pk, SK: last.SK })
+            : null,
+      };
     }
-    all.sort((a: any, b: any) =>
-      scanIndexForward ? (a.SK < b.SK ? -1 : 1) : a.SK > b.SK ? -1 : 1,
-    );
-    let start = 0;
-    if (cursor) {
-      const decoded = DynamoDbService.decodeCursor(cursor) as any;
-      const idx = all.findIndex((v: any) => v.SK === decoded?.SK);
-      if (idx >= 0) start = idx + 1;
-    }
-    const page = all.slice(start, start + limit);
-    const last: any = page[page.length - 1];
-    return {
-      items: page,
-      nextCursor:
-        start + limit < all.length && last
-          ? DynamoDbService.encodeCursor({ PK: pk, SK: last.SK })
-          : null,
-    };
+    return { items: [], nextCursor: null };
   }
 
   /**
@@ -498,11 +549,58 @@ export class DynamoDbService implements OnModuleInit, OnModuleDestroy {
       } catch (err: any) {
         this.logger.warn(`DynamoDB GSI query failed: ${err.message}`);
       }
+      return [];
     }
 
     const out: T[] = [];
     for (const v of this.memory.values()) {
       if (v.GSI1PK === gsi1pk && (!gsi1skPrefix || v.GSI1SK?.startsWith(gsi1skPrefix))) {
+        out.push(v as T);
+        if (out.length >= limit) break;
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Prefix lookup on GSI2 directory index (GSI2PK=USER, GSI2SK=<lower>#<uid>).
+   * No full-table Scan at 10k+ scale; falls back gracefully if GSI2 missing.
+   */
+  async queryGsi2<T = any>(prefix: string, limit = 10): Promise<T[]> {
+    const clean = prefix.trim().toLowerCase();
+    if (!clean) return [];
+    const col = await this.getMongoCol();
+    if (col) {
+      try {
+        const docs = await col
+          .find({ GSI2PK: 'USER', GSI2SK: { $regex: `^${clean.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}` } })
+          .limit(limit)
+          .toArray();
+        if (docs.length) return docs.map(({ _id, ...rest }) => rest as T);
+      } catch (err: any) {
+        this.logger.warn(`MongoDB GSI2 query failed: ${err.message}`);
+      }
+    }
+    if (!this.useMemory()) {
+      try {
+        const r = await dynamoDocumentClient.send(
+          new QueryCommand({
+            TableName: this.tableName,
+            IndexName: 'GSI2',
+            KeyConditionExpression: 'GSI2PK = :pk AND begins_with(GSI2SK, :sk)',
+            ExpressionAttributeValues: { ':pk': 'USER', ':sk': clean },
+            Limit: limit,
+          }),
+        );
+        if (r.Items?.length) return r.Items as T[];
+      } catch (err: any) {
+        this.logger.warn(`DynamoDB GSI2 query failed (index backfilling?): ${err.message}`);
+      }
+      return [];
+    }
+    const out: T[] = [];
+    for (const v of this.memory.values()) {
+      if (v.GSI2PK === 'USER' && typeof v.GSI2SK === 'string' && v.GSI2SK.startsWith(clean)) {
         out.push(v as T);
         if (out.length >= limit) break;
       }
@@ -540,6 +638,7 @@ export class DynamoDbService implements OnModuleInit, OnModuleDestroy {
       } catch (err: any) {
         this.logger.warn(`DynamoDB profile scan failed: ${err.message}`);
       }
+      return [];
     }
 
     const out: any[] = [];

@@ -12,7 +12,25 @@ import { Server, Socket } from 'socket.io';
 import { GhostService } from './ghost.service';
 import { TokenService } from '../../common/auth/token.service';
 
-@WebSocketGateway({ cors: { origin: true, credentials: true } })
+import { RedisService } from '../../common/redis/redis.service';
+
+const allowedOrigins = (process.env.CLIENT_ORIGIN || 'http://localhost:3000')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+@WebSocketGateway({
+  cors: {
+    origin: (origin: string, callback: (err: Error | null, allow?: boolean) => void) => {
+      if (!origin || allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
+        callback(null, true);
+      } else {
+        callback(new Error('Origin not allowed'), false);
+      }
+    },
+    credentials: true,
+  },
+})
 export class GhostGateway implements OnGatewayConnection, OnGatewayInit, OnModuleDestroy {
   @WebSocketServer() server: Server;
   private readonly logger = new Logger(GhostGateway.name);
@@ -22,13 +40,30 @@ export class GhostGateway implements OnGatewayConnection, OnGatewayInit, OnModul
   constructor(
     private readonly ghost: GhostService,
     private readonly tokens: TokenService,
+    private readonly redis: RedisService,
   ) {}
 
   afterInit() {
-    // Distributed/reboot recovery: periodic background sweeper
-    this.sweeperInterval = setInterval(() => {
-      this.logger.debug('Ghost burn sweeper check complete');
-    }, 30000);
+    // Distributed cluster-wide recovery: periodic active background sweeper
+    this.sweeperInterval = setInterval(async () => {
+      try {
+        const now = Date.now();
+        const expired = await this.redis.zrangebyscore('ghost:burns', 0, now);
+        for (const item of expired) {
+          const removed = await this.redis.zrem('ghost:burns', item);
+          if (removed > 0) {
+            const [roomId, messageId] = item.split(':');
+            if (roomId && messageId) {
+              await this.ghost.purgeMessage(roomId, messageId);
+              this.server.to(roomId).emit('ghost_message_purged', { roomId, messageId });
+              this.timers.delete(item);
+            }
+          }
+        }
+      } catch (err: any) {
+        this.logger.warn(`Ghost burn sweeper error: ${err.message}`);
+      }
+    }, 5000);
   }
 
   onModuleDestroy() {
@@ -38,6 +73,17 @@ export class GhostGateway implements OnGatewayConnection, OnGatewayInit, OnModul
   }
 
   async handleConnection(client: Socket) {
+    try {
+      const fwd = (client.handshake.headers?.['x-forwarded-for'] as string)?.split(',')[0]?.trim();
+      const ip = fwd || client.handshake.address || 'unknown';
+      const hits = await this.redis.incr(`throttle:ws:${ip}`);
+      if (hits === 1) await this.redis.expire(`throttle:ws:${ip}`, 60);
+      if ((hits || 0) > 60) {
+        client.emit('rate_limited', { message: 'Too many connections. Slow down.' });
+        client.disconnect(true);
+        return;
+      }
+    } catch {}
     try {
       const token = (client.handshake.auth?.token as string) || '';
       if (token && !token.startsWith('guest')) {
@@ -135,7 +181,8 @@ export class GhostGateway implements OnGatewayConnection, OnGatewayInit, OnModul
       /* fall back to default window */
     }
     const burnExpiresAt = Date.now() + duration * 1000;
-    // Persist so any node (or restart) can resume the purge.
+    // Persist to Redis cluster and DynamoDB so any node (or restart) can resume the purge.
+    await this.redis.zadd('ghost:burns', burnExpiresAt, key);
     this.ghost.setBurnStarted(d.roomId, d.messageId, burnExpiresAt).catch(() => {});
     this.server.to(d.roomId).emit('burn_started', {
       roomId: d.roomId,
@@ -144,6 +191,7 @@ export class GhostGateway implements OnGatewayConnection, OnGatewayInit, OnModul
       burnExpiresAt,
     });
     const t = setTimeout(async () => {
+      await this.redis.zrem('ghost:burns', key);
       await this.ghost.purgeMessage(d.roomId, d.messageId);
       this.server.to(d.roomId).emit('ghost_message_purged', {
         roomId: d.roomId,
@@ -168,6 +216,7 @@ export class GhostGateway implements OnGatewayConnection, OnGatewayInit, OnModul
       if (key.startsWith(`${d.roomId}:`)) {
         clearTimeout(t);
         this.timers.delete(key);
+        this.redis.zrem('ghost:burns', key).catch(() => {});
       }
     }
     await this.ghost.destroyRoom(d.roomId);

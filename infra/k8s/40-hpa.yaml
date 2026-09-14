@@ -19,6 +19,31 @@ spec:
         target:
           type: Utilization
           averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 15
+        - type: Pods
+          value: 2
+          periodSeconds: 15
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 10
+          periodSeconds: 60
+  # NOTE: true connection-based scaling (active_connections / event-loop lag)
+  # needs Prometheus + adapter (custom.metrics.k8s.io). CPU+memory above reacts
+  # in ~15s; for 50k bursts pre-scale to 6+ pods before the test.
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler

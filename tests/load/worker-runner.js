@@ -1,4 +1,4 @@
-﻿/**
+/**
  * tests/load/worker-runner.js
  * Distributed worker script executed inside Docker containers.
  * Connects a designated quota of concurrent WebSockets to the Nexus server.
@@ -82,6 +82,21 @@ async function runWorker() {
   const connectDuration = ((Date.now() - connectStartTime) / 1000).toFixed(2);
   console.log(`[Worker ${WORKER_ID}] All ${connectedCount}/${TARGET_SOCKETS} connected in ${connectDuration}s (errors: ${errorCount})`);
 
+  // Create one real conversation for this worker so latency measures actual
+  // DB write + Redis fan-out (not a fake room that returns Forbidden).
+  let benchConvId = `bench-room-w${WORKER_ID}`;
+  try {
+    const convRes = await fetch(`${SERVER_URL}/api/chat/conversations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` },
+      body: JSON.stringify({ type: 'group', title: `Bench W${WORKER_ID}`, participantIds: [] }),
+    }).then((r) => r.json());
+    if (convRes?.conversation?.id) benchConvId = convRes.conversation.id;
+    console.log(`[Worker ${WORKER_ID}] Bench conversation: ${benchConvId}`);
+  } catch (e) {
+    console.log(`[Worker ${WORKER_ID}] Conv create failed, using ${benchConvId}: ${e.message}`);
+  }
+
   // Signal ready and wait for master to trigger synchronized hold window
   updateStatus({
     status: 'ready',
@@ -98,31 +113,52 @@ async function runWorker() {
     if (Date.now() - signalWaitStart > 90000) break;
   }
 
-  // Sample message round-trip latency across 50 sockets under full load
-  console.log(`[Worker ${WORKER_ID}] Synchronized hold active. Sampling round-trip latency...`);
+  // Sample message round-trip & Redis fan-out latency across sockets under full load
+  console.log(`[Worker ${WORKER_ID}] Synchronized hold active. Sampling fan-out round-trip latency...`);
   const latencies = [];
-  const sampleSize = Math.min(50, sockets.length);
+  const sampleSize = Math.min(100, sockets.length);
   const sampleSockets = sockets.slice(0, sampleSize);
 
-  for (const s of sampleSockets) {
+  // Join the real room first so send_message passes MemberGuard.
+  await Promise.all(
+    sampleSockets.map(
+      (s) =>
+        new Promise((resolve) => {
+          s.emit('join_room', { conversationId: benchConvId }, () => resolve());
+          setTimeout(resolve, 2000);
+        }),
+    ),
+  );
+
+  for (let idx = 0; idx < sampleSockets.length; idx++) {
+    const s = sampleSockets[idx];
     if (!s.connected) continue;
     const t0 = Date.now();
     await new Promise((resolve) => {
+      let resolved = false;
       s.emit(
         'send_message',
         {
-          conversationId: `bench-room-w${WORKER_ID}`,
+          conversationId: benchConvId,
           content: 'bench_sample_' + Math.random(),
           isEncrypted: true,
           nonce: 'nonce_' + Date.now(),
           encVersion: 1,
         },
         () => {
-          latencies.push(Date.now() - t0);
-          resolve();
+          if (!resolved) {
+            resolved = true;
+            latencies.push(Date.now() - t0);
+            resolve();
+          }
         }
       );
-      setTimeout(resolve, 2000);
+      setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          resolve();
+        }
+      }, 3000);
     });
   }
 

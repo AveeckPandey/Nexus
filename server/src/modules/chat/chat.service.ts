@@ -1,7 +1,8 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, Optional } from '@nestjs/common';
 import { v4 as uuidv4 } from 'uuid';
 import { DynamoDbService } from '../dynamodb/dynamodb.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { RedisService } from '../../common/redis/redis.service';
 
 export interface ChatMessage {
   id: string;
@@ -66,6 +67,7 @@ export class ChatService {
   constructor(
     private readonly db: DynamoDbService,
     private readonly notifications: NotificationsService,
+    @Optional() private readonly redis?: RedisService,
   ) {}
 
   async createConversation(
@@ -95,6 +97,16 @@ export class ChatService {
       ...conv,
       createdAt: now,
     });
+    if (type === 'direct' && participants.length === 2) {
+      const pair = [participants[0], participants[1]].sort().join('#');
+      await this.db.put({
+        PK: `DIRECT#${pair}`,
+        SK: 'CONV',
+        conversationId: id,
+        createdAt: now,
+      });
+    }
+
     await Promise.all(
       participants.map((userId) =>
         this.db.put({
@@ -146,17 +158,24 @@ export class ChatService {
   }
 
   /**
-   * Find the existing 1:1 direct conversation between two users, if any.
-   * Scans the caller's membership rows (bounded) and matches a direct
-   * conversation whose participant set is exactly {a, b}.
+   * Find the existing 1:1 direct conversation between two users in O(1).
+   * Checks deterministic DIRECT#<a#b> index first, with bounded fallback for legacy.
    */
   async findDirectConversation(a: string, b: string): Promise<ConversationItem | null> {
-    const memberships = await this.db.queryByPk<MembershipItem>(`USER#${a}`, 'CONV#', 100);
+    const pair = [a, b].sort().join('#');
+    const directHit = await this.db.get<{ conversationId: string }>(`DIRECT#${pair}`, 'CONV');
+    if (directHit?.conversationId) {
+      return this.getConversation(directHit.conversationId);
+    }
+    const memberships = await this.db.queryByPk<MembershipItem>(`USER#${a}`, 'CONV#', 25);
     for (const m of memberships) {
       const conv = await this.getConversation(m.conversationId);
       if (!conv || conv.type !== 'direct' || !Array.isArray(conv.participants)) continue;
       const set = new Set(conv.participants);
-      if (set.size === 2 && set.has(a) && set.has(b)) return conv;
+      if (set.size === 2 && set.has(a) && set.has(b)) {
+        this.db.put({ PK: `DIRECT#${pair}`, SK: 'CONV', conversationId: conv.id }).catch(() => {});
+        return conv;
+      }
     }
     return null;
   }
@@ -242,7 +261,7 @@ export class ChatService {
       GSI1SK: `MSG#${now}`,
       ...msg,
     });
-    const conv = await this.getConversation(conversationId);
+    // Atomic METADATA update gives the authoritative preview for all members in O(1)
     const lastMessage = { content: preview, senderName, createdAt: now };
     await this.db.update(
       `CONV#${conversationId}`,
@@ -250,20 +269,34 @@ export class ChatService {
       'SET lastMessage = :m, updatedAt = :n',
       { ':m': lastMessage, ':n': now },
     );
-    // Refresh denormalized previews on every membership row.
-    if (conv?.participants?.length) {
-      await Promise.all(
-        conv.participants.map((userId) =>
-          this.db.update(
-            `USER#${userId}`,
-            `CONV#${conversationId}`,
-            'SET cachedLastMessage = :m, cachedUpdatedAt = :n',
-            { ':m': lastMessage, ':n': now },
+
+    // For 1:1 and small groups (<= 10), asynchronously refresh member previews in background.
+    // For large groups, avoids 1000s of writes; getUserConversations falls back to METADATA.
+    // Single read reused for both preview fan-out and push (saves ~1 DB read/msg).
+    this.getConversation(conversationId).then((conv) => {
+      const participants = conv?.participants || [];
+      if (participants.length && participants.length <= 10) {
+        Promise.all(
+          participants.map((userId) =>
+            this.db.update(
+              `USER#${userId}`,
+              `CONV#${conversationId}`,
+              'SET cachedLastMessage = :m, cachedUpdatedAt = :n',
+              { ':m': lastMessage, ':n': now },
+            ),
           ),
-        ),
+        ).catch(() => {});
+      }
+      this.dispatchPush(
+        conversationId,
+        senderId,
+        senderName,
+        isEncrypted ? REDACTED : content,
+        participants,
       );
-    }
-    this.dispatchPush(conversationId, senderId, senderName, isEncrypted ? REDACTED : content);
+    }).catch(() => {
+      this.dispatchPush(conversationId, senderId, senderName, isEncrypted ? REDACTED : content, []);
+    });
     return msg;
   }
 
@@ -346,18 +379,41 @@ export class ChatService {
     return out;
   }
 
-  private async dispatchPush(
+  private dispatchPush(
     conversationId: string,
     senderId: string,
     senderName: string,
     body: string,
+    participants: string[] = [],
   ) {
-    const conv = await this.db.get<ConversationItem>(`CONV#${conversationId}`, 'METADATA');
-    if (!conv?.participants) return;
-    for (const memberId of conv.participants) {
-      if (memberId !== senderId) {
-        this.notifications.sendPushNotification(memberId, senderName, body, { conversationId });
+    // Batched background fan-out (20/recipient batch) with DLQ on total failure.
+    // Hot path never blocks: saveMessage already returned.
+    setImmediate(async () => {
+      try {
+        let targets = participants.filter((m) => m !== senderId);
+        if (!targets.length) {
+          const conv = await this.db.get<ConversationItem>(`CONV#${conversationId}`, 'METADATA');
+          targets = (conv?.participants || []).filter((m) => m !== senderId);
+        }
+        for (let i = 0; i < targets.length; i += 20) {
+          const batch = targets.slice(i, i + 20);
+          await Promise.allSettled(
+            batch.map((memberId) =>
+              this.notifications.sendPushNotification(memberId, senderName, body, { conversationId }),
+            ),
+          );
+        }
+      } catch (err: any) {
+        // Durability: park for a dedicated push worker / SQS migration (100k path).
+        try {
+          await this.redis?.set(
+            `push:dlq:${conversationId}:${Date.now()}`,
+            JSON.stringify({ conversationId, senderId, senderName, body }),
+            'EX',
+            86400,
+          );
+        } catch {}
       }
-    }
+    });
   }
 }

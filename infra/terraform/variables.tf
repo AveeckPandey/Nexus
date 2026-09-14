@@ -32,9 +32,9 @@ variable "az_count" {
 }
 
 variable "single_nat_gateway" {
-  description = "Use one shared NAT gateway (cheap) instead of one per AZ."
+  description = "Use one shared NAT gateway (cheap) instead of one per AZ. false for 10k+/50k (per-AZ egress)."
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "eks_version" {
@@ -44,21 +44,21 @@ variable "eks_version" {
 }
 
 variable "node_instance_types" {
-  description = "EC2 instance types for the managed node group."
+  description = "EC2 instance types for the managed node group (hardened for 50k-100k scale)."
   type        = list(string)
-  default     = ["t3.medium"]
+  default     = ["c6g.xlarge", "m7i-flex.large"]
 }
 
 variable "node_min_size" {
-  description = "Minimum EKS worker nodes."
+  description = "Minimum EKS worker nodes (3 to fit 3x6Gi server pods)."
   type        = number
-  default     = 2
+  default     = 3
 }
 
 variable "node_desired_size" {
   description = "Desired EKS worker nodes."
   type        = number
-  default     = 2
+  default     = 4
 }
 
 variable "node_max_size" {
@@ -104,13 +104,13 @@ variable "cors_origins" {
 }
 
 variable "redis_node_type" {
-  description = "ElastiCache node type for the Socket.IO adapter replication group."
+  description = "ElastiCache node type for the Socket.IO adapter replication group (m6g.large hardened for 50k-100k scale)."
   type        = string
-  default     = "cache.t3.micro"
+  default     = "cache.m6g.large"
 }
 
 variable "redis_num_cache_clusters" {
-  description = "Redis replicas (primary + secondaries) for multi-AZ failover."
+  description = "Redis replicas (primary + secondaries) for multi-AZ failover. 3+ for 50k fan-out; 100k needs sharded SPUBLISH/Kafka (see elasticache.tf)."
   type        = number
-  default     = 2
+  default     = 3
 }

@@ -16,6 +16,7 @@ import {
 import { cognitoClient, AWS_CONFIG, cognitoSecretHash } from '../../config/aws.config';
 import { DynamoDbService } from '../dynamodb/dynamodb.service';
 import { TokenService } from '../../common/auth/token.service';
+import { RedisService } from '../../common/redis/redis.service';
 import { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 
 export interface UserProfile {
@@ -74,6 +75,7 @@ export class AuthService {
   constructor(
     private readonly db: DynamoDbService,
     private readonly tokens: TokenService,
+    private readonly redis: RedisService,
   ) {}
 
   async signUp(dto: { email: string; password: string; name?: string; username?: string }) {
@@ -390,13 +392,23 @@ export class AuthService {
       SK: 'PROFILE',
       GSI1PK: `EMAIL#${u.email}`,
       GSI1SK: `USER#${u.userId}`,
+      GSI2PK: 'USER',
+      GSI2SK: `${username.toLowerCase()}#${u.userId}`,
       ...profile,
     });
+    await this.redis.setJson(`user:profile:${u.userId}`, profile, 300);
+    await this.redis.del('cache:directory_profiles');
     return profile;
   }
 
-  getProfile(userId: string) {
-    return this.db.get<UserProfile>(`USER#${userId}`, 'PROFILE');
+  async getProfile(userId: string): Promise<UserProfile | null> {
+    const cached = await this.redis.getJson<UserProfile>(`user:profile:${userId}`);
+    if (cached) return cached;
+    const p = await this.db.get<UserProfile>(`USER#${userId}`, 'PROFILE');
+    if (p) {
+      await this.redis.setJson(`user:profile:${userId}`, p, 300);
+    }
+    return p;
   }
 
   /** Public directory entry for key exchange — public key and names only. */
@@ -430,6 +442,7 @@ export class AuthService {
           userId,
           claimedAt: new Date().toISOString(),
         });
+        await this.redis.set(`username:${candidate}`, userId, 'EX', 600);
         return candidate;
       }
     }
@@ -442,19 +455,29 @@ export class AuthService {
       userId,
       claimedAt: new Date().toISOString(),
     });
+    await this.redis.set(`username:${fallback}`, userId, 'EX', 600);
     return fallback;
   }
 
-  /** Exact handle lookup with a profile-scan fallback for legacy rows. */
+  /** Exact handle lookup with Redis cache and bounded fallback. */
   async getByUsername(username: string): Promise<UserProfile | null> {
     const clean = normalizeUsername(username);
     if (!clean) return null;
+
+    const cachedUserId = await this.redis.get(`username:${clean}`);
+    if (cachedUserId) {
+      const p = await this.getProfile(cachedUserId);
+      if (p) return p;
+    }
+
     const hit = await this.db.get<{ userId: string }>(`USERNAME#${clean}`, 'PROFILE');
     if (hit?.userId) {
+      await this.redis.set(`username:${clean}`, hit.userId, 'EX', 600);
       const p = await this.getProfile(hit.userId);
       if (p) return p;
     }
-    const profiles = await this.db.scanProfiles(200);
+
+    const profiles = await this.getCachedDirectoryProfiles();
     const match = profiles.find(
       (p) => typeof p.username === 'string' && p.username.toLowerCase() === clean,
     );
@@ -486,19 +509,58 @@ export class AuthService {
     return this.getByUsername(raw);
   }
 
+  /** Helper to cache directory profiles for 5min to prevent DynamoDB scans */
+  private async getCachedDirectoryProfiles(): Promise<UserProfile[]> {
+    const cached = await this.redis.getJson<UserProfile[]>('cache:directory_profiles');
+    if (cached && Array.isArray(cached)) return cached;
+    const profiles = (await this.db.scanProfiles(200)) as UserProfile[];
+    await this.redis.setJson('cache:directory_profiles', profiles, 300);
+    return profiles;
+  }
+
   /**
-   * Authenticated directory search: exact-email fast path, then bounded
-   * prefix/substring match over username, name, and email.
+   * Authenticated directory search: exact-email fast path, exact USERNAME#
+   * lookup, GSI2 prefix query (no Scan), then cached substring fallback.
+   * Per-query Redis cache (60s) prevents a DynamoDB read per keystroke.
    */
   async searchUsers(q: string, excludeUserId: string, limit = 10): Promise<PublicUserEntry[]> {
     const query = q.trim().toLowerCase().replace(/^@+/, '');
-    if (!query) return [];
+    if (!query || query.length < 2) return [];
+    if (query.length > 64) return [];
+    const cacheKey = `search:${query}:${limit}`;
+    try {
+      const hit = await this.redis.getJson<PublicUserEntry[]>(cacheKey);
+      if (hit) return hit.filter((u) => u.userId !== excludeUserId);
+    } catch {}
     if (query.includes('@')) {
       const exact = await this.findByEmail(query);
       if (exact && exact.userId !== excludeUserId) return [this.toPublicEntry(exact)];
     }
-    const profiles = await this.db.scanProfiles(200);
-    return searchDirectory(profiles as UserProfile[], q, excludeUserId, limit);
+    // O(1) exact handle lookup before any scan (covers invite/mention fast path).
+    const byHandle = await this.getByUsername(query);
+    if (byHandle && byHandle.userId !== excludeUserId) {
+      const out = [this.toPublicEntry(byHandle)];
+      await this.redis.setJson(cacheKey, out, 60).catch(() => {});
+      return out;
+    }
+    // GSI2 prefix query — zero Scans at 10k+ scale (falls back if backfilling).
+    try {
+      const gsi2 = await this.db.queryGsi2<UserProfile>(query, limit);
+      if (gsi2.length) {
+        const out = gsi2
+          .filter((p) => p.userId !== excludeUserId)
+          .slice(0, limit)
+          .map((p) => this.toPublicEntry(p));
+        if (out.length) {
+          await this.redis.setJson(cacheKey, out, 60).catch(() => {});
+          return out;
+        }
+      }
+    } catch {}
+    const profiles = await this.getCachedDirectoryProfiles();
+    const out = searchDirectory(profiles, q, excludeUserId, limit);
+    await this.redis.setJson(cacheKey, out, 60).catch(() => {});
+    return out;
   }
 
   toPublicEntry(p: UserProfile): PublicUserEntry {
@@ -522,6 +584,7 @@ export class AuthService {
     if (normalizeUsername(profile.username) === clean) return clean;
     if (normalizeUsername(profile.username)) {
       await this.db.delete(`USERNAME#${(profile.username as string).toLowerCase()}`, 'PROFILE');
+      await this.redis.del(`username:${(profile.username as string).toLowerCase()}`);
     }
     await this.db.put({
       PK: `USERNAME#${clean}`,
@@ -530,7 +593,14 @@ export class AuthService {
       userId,
       claimedAt: new Date().toISOString(),
     });
-    await this.db.update(`USER#${userId}`, 'PROFILE', 'SET username = :un', { ':un': clean });
+    await this.db.update(`USER#${userId}`, 'PROFILE', 'SET username = :un, GSI2PK = :gpk, GSI2SK = :gsk', {
+      ':un': clean,
+      ':gpk': 'USER',
+      ':gsk': `${clean}#${userId}`,
+    });
+    await this.redis.set(`username:${clean}`, userId, 'EX', 600);
+    await this.redis.del(`user:profile:${userId}`);
+    await this.redis.del('cache:directory_profiles');
     return clean;
   }
 
@@ -572,6 +642,8 @@ export class AuthService {
         ':k': key,
       });
     }
+    await this.redis.del(`user:profile:${userId}`);
+    await this.redis.del('cache:directory_profiles');
   }
 
   async setLanguage(userId: string, language: string) {

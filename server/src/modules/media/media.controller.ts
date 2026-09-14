@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
+import { Throttle } from '@nestjs/throttler';
 import { MediaService } from './media.service';
 import { CognitoAuthGuard } from '../../common/guards/cognito-auth.guard';
 import {
@@ -45,6 +46,7 @@ const MIME_TYPES: Record<string, string> = {
   '.pdf': 'application/pdf',
 };
 
+@Throttle({ default: { limit: 25, ttl: 60000 } })
 @Controller('api/media')
 export class MediaController {
   constructor(private readonly media: MediaService) {}

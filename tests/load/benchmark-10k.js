@@ -6,7 +6,7 @@
 
 const { io } = require('../../web/node_modules/socket.io-client');
 
-const SERVER_URL = 'http://localhost:8080';
+const SERVER_URL = process.env.TARGET_URL || 'https://nexus.buildwithaveeck.com';
 const TARGET_CONCURRENCY = 10000;
 const BATCH_SIZE = 100;
 const BATCH_INTERVAL_MS = 80;
@@ -88,11 +88,29 @@ async function run10kBenchmark() {
   const connectTotalTime = ((Date.now() - connectStartTime) / 1000).toFixed(2);
   console.log(`\n        ✓ All ${connectedCount.toLocaleString()} sockets connected in ${connectTotalTime}s.\n`);
 
+  // Real conversation so latency measures DB write + fan-out (not Forbidden).
+  const convRes = await fetch(`${SERVER_URL}/api/chat/conversations`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ type: 'group', title: 'Benchmark Room 10K', participantIds: [] }),
+  }).then((r) => r.json()).catch(() => ({}));
+  const benchConvId = convRes?.conversation?.id || 'bench-room-10k';
+
   // 4. Sample Round-Trip Latency Across 150 Sockets
   console.log('[04/05] Testing round-trip message latency across active sockets...');
   const latencies = [];
   const sampleSize = Math.min(150, sockets.length);
   const sampleSockets = sockets.slice(0, sampleSize);
+
+  await Promise.all(
+    sampleSockets.map(
+      (s) =>
+        new Promise((resolve) => {
+          s.emit('join_room', { conversationId: benchConvId }, () => resolve());
+          setTimeout(resolve, 2000);
+        }),
+    ),
+  );
 
   for (const s of sampleSockets) {
     const t0 = Date.now();
@@ -100,7 +118,7 @@ async function run10kBenchmark() {
       s.emit(
         'send_message',
         {
-          conversationId: 'bench-room-10k',
+          conversationId: benchConvId,
           content: 'encrypted_payload_sample_' + Math.random(),
           isEncrypted: true,
           nonce: 'bench_10k_nonce_' + Date.now(),

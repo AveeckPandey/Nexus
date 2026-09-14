@@ -1,8 +1,9 @@
-import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, Optional, UnauthorizedException } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { CognitoJwtVerifier } from 'aws-jwt-verify';
 import { AWS_CONFIG } from '../../config/aws.config';
 import { AuthenticatedUser } from '../decorators/current-user.decorator';
+import { RedisService } from '../redis/redis.service';
 
 function b64urlEncode(obj: unknown): string {
   return Buffer.from(JSON.stringify(obj)).toString('base64url');
@@ -21,8 +22,9 @@ function b64urlDecode<T>(part: string): T {
 export class TokenService {
   private readonly logger = new Logger(TokenService.name);
   private verifier: ReturnType<typeof CognitoJwtVerifier.create> | null = null;
+  private readonly verifiedCache = new Map<string, { user: AuthenticatedUser; expiresAt: number }>();
 
-  constructor() {
+  constructor(@Optional() private readonly redis?: RedisService) {
     if (AWS_CONFIG.cognitoUserPoolId && AWS_CONFIG.cognitoClientId) {
       try {
         this.verifier = CognitoJwtVerifier.create({
@@ -87,10 +89,22 @@ export class TokenService {
   }
 
   async verify(token: string): Promise<AuthenticatedUser> {
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    // Shared Redis cache first (multi-pod), then local LRU.
+    try {
+      const shared = await this.redis?.getJson<AuthenticatedUser>(`auth:cache:${tokenHash}`);
+      if (shared?.userId && shared?.email) return shared;
+    } catch {}
+    const cached = this.verifiedCache.get(tokenHash);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.user;
+    }
+
+    let user: AuthenticatedUser | null = null;
     if (this.verifier) {
       try {
         const p = await this.verifier.verify(token);
-        return {
+        user = {
           userId: p.sub,
           email: String(p.email),
           username: String(p['cognito:username'] || p.email),
@@ -101,8 +115,28 @@ export class TokenService {
         // fall through to session token
       }
     }
-    const session = this.verifySessionToken(token);
-    if (session) return session;
-    throw new UnauthorizedException('Invalid or expired token');
+
+    if (!user) {
+      user = this.verifySessionToken(token);
+    }
+
+    if (!user) {
+      throw new UnauthorizedException('Invalid or expired token');
+    }
+
+    // Bounded eviction: keep max 10,000 entries
+    if (this.verifiedCache.size >= 10000) {
+      const first = this.verifiedCache.keys().next().value;
+      if (first) this.verifiedCache.delete(first);
+    }
+    this.verifiedCache.set(tokenHash, {
+      user,
+      expiresAt: Date.now() + 60_000,
+    });
+    try {
+      await this.redis?.setJson(`auth:cache:${tokenHash}`, user, 60);
+    } catch {}
+
+    return user;
   }
 }

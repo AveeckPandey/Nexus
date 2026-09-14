@@ -16,6 +16,13 @@ spec:
         app: nexus-server
     spec:
       serviceAccountName: nexus-server-sa
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: nexus-server
       containers:
         - name: server
           # Replace with the `ecr_server_url` terraform output, e.g.

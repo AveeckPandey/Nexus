@@ -8,7 +8,9 @@ import {
   Query,
   UseGuards,
   BadRequestException,
-} from '@nestjs/common';import { AuthService } from './auth.service';
+} from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
+import { AuthService } from './auth.service';
 import { CognitoAuthGuard } from '../../common/guards/cognito-auth.guard';
 import {
   CurrentUser,
@@ -17,6 +19,7 @@ import {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+@Throttle({ default: { limit: 15, ttl: 60000 } })
 @Controller('api/auth')
 export class AuthController {
   constructor(private readonly auth: AuthService) {}

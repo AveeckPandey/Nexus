@@ -59,6 +59,9 @@ describe('chat-api: conversations', () => {
     expect(conv.type).toBe('group');
     expect(conv.participants).toHaveLength(5);
     await chat.saveMessage(conv.id, 'm1', 'M1', 'hello group');
+    // Push fans out in background (non-blocking) — flush before asserting.
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setTimeout(r, 10));
     // Push fans out to the other 4 members only.
     const recipients = sent.map((s) => s.memberId).sort();
     expect(recipients).toEqual(['m2', 'm3', 'm4', 'm5']);
