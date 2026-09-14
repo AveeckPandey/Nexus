@@ -432,24 +432,28 @@ export function AuthForm() {
                     )}
                   </div>
 
-                  <div className="flex items-center gap-3 pt-1 text-[11px] font-medium tracking-[0.08em] text-[#7E76A0]">
-                    <span className="flex-1 h-px bg-white/10" /> OR CONTINUE WITH <span className="flex-1 h-px bg-white/10" />
-                  </div>
+                  {isLogin && (
+                    <>
+                      <div className="flex items-center gap-3 pt-1 text-[11px] font-medium tracking-[0.08em] text-[#7E76A0]">
+                        <span className="flex-1 h-px bg-white/10" /> OR CONTINUE WITH <span className="flex-1 h-px bg-white/10" />
+                      </div>
 
-                  <button
-                    onClick={() => {
-                      const cid = process.env.NEXT_PUBLIC_GITHUB_CLIENT_ID || 'Ov23liE4xyqjejKLJwJb';
-                      const redirect = `${window.location.origin}/auth/github/callback`;
-                      window.location.href =
-                        `https://github.com/login/oauth/authorize?client_id=${encodeURIComponent(cid)}` +
-                        `&redirect_uri=${encodeURIComponent(redirect)}&scope=user:email`;
-                    }}
-                    disabled={busy}
-                    className="w-full rounded-xl border border-white/[0.14] bg-white/[0.04] hover:bg-white/[0.08] active:scale-[0.99] backdrop-blur-md px-4 py-3.5 font-semibold text-[14.5px] text-white transition flex items-center justify-center gap-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.15)]"
-                  >
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56 0-.27-.01-1.17-.02-2.12-3.2.7-3.88-1.36-3.88-1.36-.52-1.33-1.28-1.68-1.28-1.68-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.19 1.76 1.19 1.03 1.76 2.7 1.25 3.36.96.1-.75.4-1.25.72-1.54-2.55-.29-5.23-1.28-5.23-5.68 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11.1 11.1 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.41-2.69 5.38-5.25 5.67.41.35.77 1.05.77 2.12 0 1.53-.01 2.76-.01 3.14 0 .31.21.68.8.56A10.52 10.52 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z"/></svg>
-                    Continue with GitHub
-                  </button>
+                      <button
+                        onClick={() => {
+                          const cid = process.env.NEXT_PUBLIC_GITHUB_CLIENT_ID || 'Ov23liE4xyqjejKLJwJb';
+                          const redirect = `${window.location.origin}/auth/github/callback`;
+                          window.location.href =
+                            `https://github.com/login/oauth/authorize?client_id=${encodeURIComponent(cid)}` +
+                            `&redirect_uri=${encodeURIComponent(redirect)}&scope=user:email`;
+                        }}
+                        disabled={busy}
+                        className="w-full rounded-xl border border-white/[0.14] bg-white/[0.04] hover:bg-white/[0.08] active:scale-[0.99] backdrop-blur-md px-4 py-3.5 font-semibold text-[14.5px] text-white transition flex items-center justify-center gap-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.15)]"
+                      >
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56 0-.27-.01-1.17-.02-2.12-3.2.7-3.88-1.36-3.88-1.36-.52-1.33-1.28-1.68-1.28-1.68-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.19 1.76 1.19 1.03 1.76 2.7 1.25 3.36.96.1-.75.4-1.25.72-1.54-2.55-.29-5.23-1.28-5.23-5.68 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11.1 11.1 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.41-2.69 5.38-5.25 5.67.41.35.77 1.05.77 2.12 0 1.53-.01 2.76-.01 3.14 0 .31.21.68.8.56A10.52 10.52 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z"/></svg>
+                        Continue with GitHub
+                      </button>
+                    </>
+                  )}
 
                   <p className="flex items-center justify-center gap-1.5 pt-1 text-[12px] text-[#8E86AD]">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 2 4 5.5V11c0 5 3.4 8.7 8 10 4.6-1.3 8-5 8-10V5.5L12 2Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/><path d="m9 11.5 2.2 2.2L15.5 9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
