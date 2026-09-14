@@ -32,6 +32,13 @@ export interface GhostMessage {
 export class GhostService {
   constructor(private readonly db: DynamoDbService) {}
 
+  /** Burn window clamp: minimum 5s, maximum 5 minutes (300s). Default 30s. */
+  clampBurn(input?: unknown): number {
+    const n = typeof input === 'number' ? Math.floor(input) : parseInt(String(input ?? ''), 10);
+    if (!Number.isFinite(n)) return 30;
+    return Math.min(300, Math.max(5, n));
+  }
+
   async createInvite(createdBy: string) {
     const token = crypto.randomBytes(16).toString('hex');
     const roomId = uuidv4();
@@ -58,7 +65,7 @@ export class GhostService {
     return {
       token,
       roomId,
-      inviteLink: `https://nexus.app/ghost?token=${token}`,
+      inviteLink: `${process.env.CLIENT_ORIGIN || 'https://nexus.app'}/ghost?token=${token}`,
       expiresAt: new Date((nowSec + 300) * 1000).toISOString(),
     };
   }
@@ -71,6 +78,9 @@ export class GhostService {
       throw new BadRequestException('Invite link expired (5-minute limit).');
     }
     if (invite.isConsumed) {
+      if (invite.claimedBy === userId || invite.createdBy === userId) {
+        return { roomId: invite.roomId };
+      }
       throw new BadRequestException('This one-time invite has already been used.');
     }
     // Atomic one-time consumption — losers of a claim race get `false`.
@@ -114,17 +124,23 @@ export class GhostService {
     senderName: string,
     content: string,
     e2ee?: { isEncrypted?: boolean; nonce?: string; encVersion?: number },
+    burnDuration?: unknown,
   ): Promise<GhostMessage> {
+    // Ghost messages are ciphertext-only: plaintext is rejected at the gateway.
+    if (!e2ee?.isEncrypted || !e2ee?.nonce) {
+      throw new BadRequestException('Ghost messages must be end-to-end encrypted.');
+    }
     const id = uuidv4();
+    const burn = this.clampBurn(burnDuration);
     const msg: GhostMessage = {
       id,
       roomId,
       senderId,
       senderName,
       content,
-      burnDuration: 30,
+      burnDuration: burn,
       isBurnStarted: false,
-      isEncrypted: Boolean(e2ee?.isEncrypted),
+      isEncrypted: true,
       nonce: e2ee?.nonce,
       encVersion: e2ee?.encVersion,
       createdAt: new Date().toISOString(),
@@ -132,14 +148,32 @@ export class GhostService {
     await this.db.put({
       PK: `GHOST#${roomId}`,
       SK: `MSG#${id}`,
-      expire_at: Math.floor(Date.now() / 1000) + 3600,
+      // Short TTL fallback so a crashed/restarted node still loses the
+      // ciphertext shortly after the burn window (purge is the primary path).
+      expire_at: Math.floor(Date.now() / 1000) + burn + 300,
       ...msg,
     });
     return msg;
   }
 
+  getMessage(roomId: string, messageId: string) {
+    return this.db.get<GhostMessage>(`GHOST#${roomId}`, `MSG#${messageId}`);
+  }
+
   purgeMessage(roomId: string, messageId: string) {
     return this.db.delete(`GHOST#${roomId}`, `MSG#${messageId}`);
+  }
+
+  /** Wipe a whole ghost room: every message + membership row. Untrackable. */
+  async destroyRoom(roomId: string): Promise<{ deleted: number }> {
+    const rows = await this.db.queryByPk<{ SK: string }>(`GHOST#${roomId}`, undefined, 500);
+    let deleted = 0;
+    for (const r of rows) {
+      if (!r?.SK) continue;
+      await this.db.delete(`GHOST#${roomId}`, r.SK);
+      deleted += 1;
+    }
+    return { deleted };
   }
 
   async getBurningMessages(roomId: string): Promise<GhostMessage[]> {

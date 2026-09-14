@@ -1,14 +1,19 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Button, Card, CardBody, Avatar, Select, SelectItem, Spinner } from '@heroui/react';
-import { authApi } from '@/lib/api';
+import { useEffect, useState, useRef } from 'react';
+import QRCode from 'react-qr-code';
+import { Button, Avatar, Select, SelectItem, Spinner } from '@heroui/react';
+import { authApi, mediaApi } from '@/lib/api';
+import { buildPersonalInviteLink, copyText, sharePersonalInvite } from '@/lib/invite';
 import { useAuthStore } from '@/store/auth';
+import { BackIcon, CameraIcon, PencilIcon, CopyIcon, LockIcon, SmileIcon } from './MenuIcons';
 import type { User } from '@/lib/types';
 
 const LANGS = ['en', 'es', 'fr', 'de', 'hi', 'ar', 'pt'];
+const DEFAULT_ABOUT = "What's happening?";
 
-export function ProfilePanel() {
+/** WhatsApp-style Edit profile: photo, About, Name, Username (no phone number). */
+export function ProfilePanel({ onBack }: { onBack?: () => void }) {
   const sessionUser = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const [profile, setProfile] = useState<User | null>(null);
@@ -17,16 +22,89 @@ export function ProfilePanel() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Avatar upload state
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [avatarMsg, setAvatarMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Inline editors (About / Name / Username)
+  const [about, setAbout] = useState(sessionUser?.about || '');
+  const [aboutEdit, setAboutEdit] = useState(false);
+  const [aboutSaving, setAboutSaving] = useState(false);
+  const [name, setName] = useState(sessionUser?.name || '');
+  const [nameEdit, setNameEdit] = useState(false);
+  const [nameSaving, setNameSaving] = useState(false);
+  const [username, setUsername] = useState(sessionUser?.username || '');
+  const [unameEdit, setUnameEdit] = useState(false);
+  const [unameSaving, setUnameSaving] = useState(false);
+  const [unameMsg, setUnameMsg] = useState<string | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
+  const [shareMsg, setShareMsg] = useState<string | null>(null);
+
   useEffect(() => {
     authApi
       .me()
       .then((r) => {
         setProfile(r.profile);
         if (r.profile?.preferredLanguage) setLang(r.profile.preferredLanguage);
+        if (r.profile?.username) setUsername(r.profile.username);
+        if (r.profile?.name) setName(r.profile.name);
+        if (r.profile?.about !== undefined) setAbout(r.profile.about);
       })
       .catch(() => setError('Could not load profile from server.'))
       .finally(() => setLoading(false));
   }, []);
+
+  const patchSession = (patch: Partial<User>) => {
+    if (profile) setProfile({ ...profile, ...patch });
+    const current = useAuthStore.getState().user;
+    if (current) {
+      const updated = { ...current, ...patch };
+      useAuthStore.setState({ user: updated });
+      try {
+        localStorage.setItem('nexus_user', JSON.stringify(updated));
+      } catch {
+        /* private mode */
+      }
+    }
+  };
+
+  const handleAvatarFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setAvatarMsg(null);
+    if (!file.type.startsWith('image/')) {
+      setAvatarMsg({ type: 'error', text: 'Please select a valid image file (PNG, JPG, WEBP, GIF).' });
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setAvatarMsg({ type: 'error', text: 'Image size must be under 5MB.' });
+      return;
+    }
+
+    const previewUrl = URL.createObjectURL(file);
+    setAvatarPreview(previewUrl);
+    setAvatarUploading(true);
+
+    try {
+      const uploadedUrl = await mediaApi.upload(file);
+      await authApi.profile({ avatarUrl: uploadedUrl });
+      patchSession({ avatarUrl: uploadedUrl });
+      setAvatarMsg({ type: 'success', text: 'Profile picture updated!' });
+      setTimeout(() => setAvatarMsg(null), 4000);
+    } catch (err: any) {
+      setAvatarPreview(null);
+      setAvatarMsg({
+        type: 'error',
+        text: err?.response?.data?.message || 'Failed to upload profile picture. Please try again.',
+      });
+    } finally {
+      setAvatarUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
 
   const saveLang = async (v: string) => {
     setLang(v);
@@ -40,48 +118,368 @@ export function ProfilePanel() {
     }
   };
 
+  const saveAbout = async () => {
+    const clean = about.trim().slice(0, 140);
+    setAboutSaving(true);
+    try {
+      await authApi.profile({ about: clean });
+      setAbout(clean);
+      patchSession({ about: clean });
+      setAboutEdit(false);
+    } catch {
+      setAvatarMsg({ type: 'error', text: 'Could not save About.' });
+    } finally {
+      setAboutSaving(false);
+    }
+  };
+
+  const saveName = async () => {
+    const clean = name.trim().slice(0, 80);
+    if (!clean) return;
+    setNameSaving(true);
+    try {
+      await authApi.profile({ name: clean });
+      setName(clean);
+      patchSession({ name: clean });
+      setNameEdit(false);
+    } catch {
+      setAvatarMsg({ type: 'error', text: 'Could not save name.' });
+    } finally {
+      setNameSaving(false);
+    }
+  };
+
+  const saveUsername = async () => {
+    const clean = username.trim().toLowerCase().replace(/^@+/, '');
+    setUnameMsg(null);
+    if (!/^[a-z0-9_]{3,20}$/.test(clean)) {
+      setUnameMsg('3–20 chars: lowercase letters, numbers, underscore.');
+      return;
+    }
+    setUnameSaving(true);
+    try {
+      await authApi.claimUsername(clean);
+      setUsername(clean);
+      patchSession({ username: clean });
+      setUnameEdit(false);
+      setUnameMsg(`Saved — friends can find you as @${clean}.`);
+    } catch (e: any) {
+      setUnameMsg(e?.response?.data?.message || 'Could not save username.');
+    } finally {
+      setUnameSaving(false);
+    }
+  };
+
+  const copyField = async (label: string, value: string) => {
+    setCopied((await copyText(value)) ? label : null);
+    setTimeout(() => setCopied(null), 2000);
+  };
+
   const shown: User | null = profile || sessionUser;
+  const currentAvatar = avatarPreview || shown?.avatarUrl;
+  const handle = (shown?.username || '').replace(/^@+/, '');
+  const inviteLink = handle ? buildPersonalInviteLink(handle) : '';
+
+  const share = async () => {
+    if (!inviteLink) return;
+    const outcome = await sharePersonalInvite({ url: inviteLink, username: handle, name: shown?.name });
+    setShareMsg(
+      outcome === 'shared'
+        ? 'Share sheet opened.'
+        : outcome === 'copied'
+          ? 'Invite link copied.'
+          : 'Sharing failed — copy the link manually.',
+    );
+  };
+
+  const copy = async () => {
+    if (!inviteLink) return;
+    setShareMsg((await copyText(inviteLink)) ? 'Invite link copied.' : 'Copy failed.');
+  };
+
+  const rowLabel = 'text-[13px] text-white/50 px-6 pt-5 pb-1';
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 min-w-0">
-      <Card className="max-w-md mx-auto bg-whatsapp-panel">
-        <CardBody className="p-6 space-y-4">
-          <div className="flex items-center gap-4">
-            <Avatar name={shown?.name || shown?.username} size="lg" />
-            <div className="min-w-0">
-              <b className="block truncate">{shown?.name || shown?.username || '—'}</b>
-              <span className="block truncate text-xs text-whatsapp-checkGray">{shown?.email}</span>
-              <span className="block truncate text-[11px] text-whatsapp-checkGray">id: {shown?.userId}</span>
-            </div>
-          </div>
-
-          {loading && <Spinner size="sm" />}
-          {error && <p className="text-xs text-danger">{error}</p>}
-
-          <div>
-            <p className="text-xs text-whatsapp-checkGray mb-1">Translation language</p>
-            <Select
-              aria-label="Language"
-              selectedKeys={[lang]}
-              isDisabled={saving}
-              onSelectionChange={(k) => saveLang(Array.from(k)[0] as string)}
+    <div className="flex-1 overflow-y-auto min-w-0 bg-whatsapp-panel">
+      <div className="max-w-md mx-auto pb-8">
+        {/* Header */}
+        <div className="flex items-center gap-4 px-4 py-3 sticky top-0 bg-whatsapp-panel/95 backdrop-blur z-10">
+          {onBack && (
+            <button
+              onClick={onBack}
+              aria-label="Back to chats"
+              className="p-1.5 -ml-1.5 rounded-full text-white/80 hover:text-white hover:bg-white/10 transition"
             >
-              {LANGS.map((l) => (
-                <SelectItem key={l}>{l}</SelectItem>
-              ))}
-            </Select>
-          </div>
+              <BackIcon />
+            </button>
+          )}
+          <h1 className="text-[15px] font-semibold text-white">Edit profile</h1>
+        </div>
 
-          <div className="text-[11px] text-whatsapp-checkGray bg-whatsapp-composer rounded-xl p-3 leading-5">
-            🔒 Your per-chat encryption keys never leave this browser. Share a chat key from the
-            🔑 button inside any conversation so your other devices can decrypt history.
+        {/* Photo */}
+        <div className="flex justify-center py-6">
+          <div className="relative">
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              title="Change profile picture"
+              className="block w-44 h-44 rounded-full overflow-hidden bg-whatsapp-composer hover:brightness-110 transition"
+            >
+              {currentAvatar ? (
+                <img src={currentAvatar} alt="Profile" className="w-full h-full object-cover" />
+              ) : (
+                <span className="w-full h-full flex items-center justify-center text-white/70">
+                  <CameraIcon />
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              aria-label="Change profile picture"
+              title="Change profile picture"
+              className="absolute bottom-1 right-1 w-11 h-11 rounded-full bg-whatsapp-outgoing hover:bg-secondary text-white flex items-center justify-center shadow-lg transition"
+            >
+              {avatarUploading ? <Spinner size="sm" color="default" /> : <CameraIcon />}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              className="hidden"
+              onChange={handleAvatarFile}
+            />
           </div>
+        </div>
+        {avatarMsg && (
+          <p className={`text-xs text-center px-6 pb-2 ${avatarMsg.type === 'success' ? 'text-secondary' : 'text-danger'}`}>
+            {avatarMsg.text}
+          </p>
+        )}
 
+        {/* About */}
+        <p className={rowLabel}>About</p>
+        <div className="bg-whatsapp-composer px-6 py-3.5 flex items-center gap-3">
+          {aboutEdit ? (
+            <span className="flex-1 flex items-center gap-2">
+              <input
+                autoFocus
+                value={about}
+                maxLength={140}
+                onChange={(e) => setAbout(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') saveAbout();
+                  if (e.key === 'Escape') {
+                    setAbout(shown?.about || '');
+                    setAboutEdit(false);
+                  }
+                }}
+                placeholder={DEFAULT_ABOUT}
+                className="flex-1 bg-transparent outline-none text-[15px] text-white border-b border-secondary pb-1"
+              />
+              <button
+                onClick={saveAbout}
+                disabled={aboutSaving}
+                className="text-secondary text-sm font-medium disabled:opacity-50"
+              >
+                Save
+              </button>
+            </span>
+          ) : (
+            <>
+              <span className="text-white/50 flex items-center"><SmileIcon size={18} /></span>
+              <span className="flex-1 text-[15px] text-white">{shown?.about || DEFAULT_ABOUT}</span>
+              <button
+                onClick={() => {
+                  setAbout(shown?.about || '');
+                  setAboutEdit(true);
+                }}
+                aria-label="Edit about"
+                className="p-1.5 rounded-full text-white/60 hover:text-white hover:bg-white/10 transition"
+              >
+                <PencilIcon />
+              </button>
+            </>
+          )}
+        </div>
+
+        {/* Name */}
+        <p className={rowLabel}>Name</p>
+        <div className="bg-whatsapp-composer px-6 py-3.5 flex items-center gap-3">
+          {nameEdit ? (
+            <span className="flex-1 flex items-center gap-2">
+              <input
+                autoFocus
+                value={name}
+                maxLength={80}
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') saveName();
+                  if (e.key === 'Escape') {
+                    setName(shown?.name || '');
+                    setNameEdit(false);
+                  }
+                }}
+                placeholder="Your name"
+                className="flex-1 bg-transparent outline-none text-[15px] text-white border-b border-secondary pb-1"
+              />
+              <button
+                onClick={saveName}
+                disabled={nameSaving || !name.trim()}
+                className="text-secondary text-sm font-medium disabled:opacity-50"
+              >
+                Save
+              </button>
+            </span>
+          ) : (
+            <>
+              <span className="flex-1 text-[15px] text-white">{shown?.name || shown?.username || '—'}</span>
+              <button
+                onClick={() => {
+                  setName(shown?.name || '');
+                  setNameEdit(true);
+                }}
+                aria-label="Edit name"
+                className="p-1.5 rounded-full text-white/60 hover:text-white hover:bg-white/10 transition"
+              >
+                <PencilIcon />
+              </button>
+            </>
+          )}
+        </div>
+
+        {/* Username — our identity instead of a phone number */}
+        <p className={rowLabel}>Username</p>
+        <div className="bg-whatsapp-composer px-6 py-3.5 flex items-center gap-3">
+          {unameEdit ? (
+            <span className="flex-1 flex items-center gap-2">
+              <span className="text-white/50">@</span>
+              <input
+                autoFocus
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') saveUsername();
+                  if (e.key === 'Escape') {
+                    setUsername(shown?.username || '');
+                    setUnameEdit(false);
+                  }
+                }}
+                placeholder="aveeck"
+                className="flex-1 bg-transparent outline-none text-[15px] text-white border-b border-secondary pb-1"
+              />
+              <button
+                onClick={saveUsername}
+                disabled={unameSaving}
+                className="text-secondary text-sm font-medium disabled:opacity-50"
+              >
+                Save
+              </button>
+            </span>
+          ) : (
+            <>
+              <span className="flex-1 text-[15px] text-white">@{handle || '—'}</span>
+              <button
+                onClick={() => handle && copyField('username', `@${handle}`)}
+                aria-label="Copy username"
+                title={copied === 'username' ? 'Copied!' : 'Copy username'}
+                className="p-1.5 rounded-full text-white/60 hover:text-white hover:bg-white/10 transition"
+              >
+                <CopyIcon />
+              </button>
+              <button
+                onClick={() => {
+                  setUsername(shown?.username || '');
+                  setUnameMsg(null);
+                  setUnameEdit(true);
+                }}
+                aria-label="Edit username"
+                className="p-1.5 rounded-full text-white/60 hover:text-white hover:bg-white/10 transition"
+              >
+                <PencilIcon />
+              </button>
+            </>
+          )}
+        </div>
+        {unameMsg && <p className="text-[11px] text-white/50 px-6 pt-1">{unameMsg}</p>}
+
+        {/* Email */}
+        <p className={rowLabel}>Email</p>
+        <div className="bg-whatsapp-composer px-6 py-3.5 flex items-center gap-3">
+          <span className="flex-1 truncate text-[15px] text-white">{shown?.email || '—'}</span>
+          {shown?.email && (
+            <button
+              onClick={() => copyField('email', shown.email)}
+              aria-label="Copy email"
+              title={copied === 'email' ? 'Copied!' : 'Copy email'}
+              className="p-1.5 rounded-full text-white/60 hover:text-white hover:bg-white/10 transition"
+            >
+              <CopyIcon />
+            </button>
+          )}
+        </div>
+
+        {loading && (
+          <div className="flex justify-center py-4">
+            <Spinner size="sm" />
+          </div>
+        )}
+        {error && <p className="text-xs text-danger px-6 pt-2">{error}</p>}
+
+        {/* Invite card */}
+        {inviteLink && (
+          <div className="mx-4 mt-6 space-y-2 rounded-xl border border-white/10 p-3 bg-whatsapp-composer">
+            <p className="text-xs text-white/50">Personal invite link — no phone number needed</p>
+            <p className="text-xs break-all text-secondary">{inviteLink}</p>
+            <div className="flex gap-2">
+              <Button size="sm" color="secondary" className="flex-1" onPress={share}>
+                Share…
+              </Button>
+              <Button size="sm" variant="flat" className="flex-1" onPress={copy}>
+                Copy
+              </Button>
+            </div>
+            <div className="flex items-center gap-3 pt-1">
+              <span className="bg-white p-2 rounded-xl shrink-0">
+                <QRCode value={inviteLink} size={96} />
+              </span>
+              <p className="text-[11px] leading-5 text-white/50">
+                In-person invites: your friend scans this QR with any phone camera and
+                lands in an encrypted chat with you — no download, no phonebook.
+              </p>
+            </div>
+            {shareMsg && <p className="text-[11px] text-secondary">{shareMsg}</p>}
+          </div>
+        )}
+
+        {/* Language */}
+        <div className="mx-4 mt-4">
+          <p className="text-xs text-white/50 mb-1 px-1">Translation language</p>
+          <Select
+            aria-label="Language"
+            selectedKeys={[lang]}
+            isDisabled={saving}
+            onSelectionChange={(k) => saveLang(Array.from(k)[0] as string)}
+          >
+            {LANGS.map((l) => (
+              <SelectItem key={l}>{l}</SelectItem>
+            ))}
+          </Select>
+        </div>
+
+        <div className="mx-4 mt-4 text-[11px] text-white/50 bg-whatsapp-composer rounded-xl p-3 leading-5 flex gap-1.5">
+          <span className="shrink-0 mt-0.5 flex items-center"><LockIcon size={11} /></span>
+          <span>
+            Your per-chat encryption keys never leave this browser. Share a chat key from the
+            key button inside any conversation so your other devices can decrypt history.
+          </span>
+        </div>
+
+        <div className="mx-4 mt-4">
           <Button color="danger" variant="flat" className="w-full" onPress={logout}>
             Logout
           </Button>
-        </CardBody>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 }
+

@@ -11,20 +11,27 @@ import { Logger } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { ChatService } from './chat.service';
 import { TokenService } from '../../common/auth/token.service';
+import { AiService } from '../ai/ai.service';
 
 @WebSocketGateway({ cors: { origin: true, credentials: true } })
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer() server: Server;
   private readonly logger = new Logger(ChatGateway.name);
 
+  private readonly lastAiInvocation = new Map<string, number>();
+
   constructor(
     private readonly chat: ChatService,
     private readonly tokens: TokenService,
+    private readonly ai: AiService,
   ) {}
 
   async handleConnection(client: Socket) {
     try {
       const token = (client.handshake.auth?.token as string) || '';
+      if (token && token.startsWith('guest')) {
+        return;
+      }
       const user = await this.tokens.verify(token);
       client.data.userId = user.userId;
       client.data.username = user.username;
@@ -60,6 +67,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     d: {
       conversationId: string;
       senderName: string;
+      senderAvatar?: string;
       content: string;
       tempId?: string;
       mediaType?: 'text' | 'image' | 'video' | 'audio' | 'file';
@@ -83,8 +91,53 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       d.mediaUrl,
       d.replyTo,
       { isEncrypted: d.isEncrypted, nonce: d.nonce, encVersion: d.encVersion },
+      d.senderAvatar,
     );
     this.server.to(d.conversationId).emit('new_message', msg);
+
+    // If message is unencrypted and mentions Nexus AI (@nexus or @ai), trigger bot response
+    const isFromAiOrBot = senderId === 'nexus-ai' || d.senderName === 'Nexus AI' || senderId.startsWith('bot_');
+    if (!isFromAiOrBot && !d.isEncrypted && d.content && /@nexus|@ai/i.test(d.content)) {
+      const now = Date.now();
+      const last = this.lastAiInvocation.get(d.conversationId) || 0;
+      if (now - last > 2500) {
+        this.lastAiInvocation.set(d.conversationId, now);
+        const callerName = d.senderName || c.data.username || 'User';
+        (async () => {
+          try {
+            this.server.to(d.conversationId).emit('user_typing_start', {
+              userId: 'nexus-ai',
+              username: 'Nexus AI',
+              conversationId: d.conversationId,
+            });
+            const replyText = await this.ai.chatReply(d.content, callerName);
+            this.server.to(d.conversationId).emit('user_typing_stop', {
+              userId: 'nexus-ai',
+              conversationId: d.conversationId,
+            });
+            const aiMsg = await this.chat.saveMessage(
+              d.conversationId,
+              'nexus-ai',
+              'Nexus AI',
+              replyText,
+              'text',
+              undefined,
+              { id: msg.id, senderName: msg.senderName, content: msg.content },
+              { isEncrypted: false },
+              '/assets/alien-svgrepo-com.svg',
+            );
+            this.server.to(d.conversationId).emit('new_message', aiMsg);
+          } catch (err: any) {
+            this.logger.error(`Nexus AI reply error: ${err?.message}`);
+            this.server.to(d.conversationId).emit('user_typing_stop', {
+              userId: 'nexus-ai',
+              conversationId: d.conversationId,
+            });
+          }
+        })();
+      }
+    }
+
     // Ack carries the server UUID so the client can swap its optimistic tempId.
     return { status: 'sent', messageId: msg.id, tempId: d.tempId, createdAt: msg.createdAt };
   }
@@ -143,5 +196,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       status: 'read',
       userId: c.data.userId,
     });
+  }
+
+  @SubscribeMessage('network_ping')
+  networkPing() {
+    return { timestamp: Date.now() };
   }
 }

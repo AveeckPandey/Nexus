@@ -182,7 +182,7 @@ export function AuthForm() {
   };
 
   return (
-    <div className="min-h-screen w-full relative overflow-y-auto overflow-x-hidden bg-[#0A0618] text-white flex flex-col items-center justify-center px-4 py-8">
+    <div data-testid="auth-form" className="min-h-screen w-full relative overflow-y-auto overflow-x-hidden bg-[#0A0618] text-white flex flex-col items-center justify-center px-4 py-8">
       {/* backdrop — Dither wave field (pixel background) */}
       <div aria-hidden className="fixed inset-0 z-0 overflow-hidden bg-black pointer-events-auto">
         <div className="absolute inset-0 w-full h-full">
@@ -209,12 +209,7 @@ export function AuthForm() {
           <div className="relative z-10 flex flex-col h-full">
             <NexusMark />
 
-            <div className="mt-7 inline-flex w-fit items-center gap-2 rounded-full border border-[#8B5CF6]/40 glass-chip px-3.5 py-1.5 text-[13px] font-medium text-[#D6CCFF]">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.9)]" />
-              Web-Only Encrypted Rebuild
-            </div>
-
-            <h1 className="mt-5 text-[42px] sm:text-[48px] leading-[1.02] font-extrabold tracking-[-0.02em]">
+            <h1 className="mt-8 text-[42px] sm:text-[48px] leading-[1.02] font-extrabold tracking-[-0.02em]">
               Private
               <br />
               <span className="bg-gradient-to-r from-[#A78BFA] via-[#8B5CF6] to-[#7C6CF6] bg-clip-text text-transparent">conversations</span>
@@ -511,3 +506,4 @@ export function AuthForm() {
     </div>
   );
 }
+

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@heroui/react';
 import { mediaApi } from '@/lib/api';
+import { CloseIcon } from './MenuIcons';
 
 interface Props {
   onSend: (text: string, opts: { mediaUrl: string; mediaType: 'audio' }) => void;
@@ -118,8 +119,8 @@ export function VoiceRecorder({ onSend, onCancel, onBusy }: Props) {
           <span key={i} className="flex-1 rounded bg-danger/80" style={{ height: `${h}px` }} />
         ))}
       </div>
-      <Button size="sm" variant="light" onPress={cancel}>
-        ✕
+      <Button size="sm" variant="light" onPress={cancel} aria-label="Cancel recording">
+        <CloseIcon size={14} />
       </Button>
       <Button size="sm" color="danger" onPress={stopAndSend}>
         Send
@@ -127,3 +128,4 @@ export function VoiceRecorder({ onSend, onCancel, onBusy }: Props) {
     </div>
   );
 }
+

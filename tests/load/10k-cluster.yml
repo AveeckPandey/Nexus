@@ -1,0 +1,88 @@
+# tests/load/10k-cluster.yml — Stage 2: 10,000 concurrent users, small cluster.
+# Target: 2x ECS/EKS pods (2 vCPU, 4 GB each) behind ALB + cache.t4g.small Redis (single-AZ).
+# Requires @socket.io/redis-adapter syncing room events across the 2 pods.
+#
+# Pass criteria and how each is actually measured:
+#   - p99 < 80ms              -> Artillery's own summary report (this file measures this directly)
+#   - Redis CPU < 25%          -> ElastiCache CloudWatch metrics, NOT this file
+#   - 0 dropped sockets        -> server-side connection/disconnect log, cross-referenced after the run
+#   - 1,000 msg/s              -> server-side Socket.IO message counter, NOT Artillery's req/s
+#
+# Run:
+#   npx artillery run tests/load/10k-cluster.yml
+#   npx artillery run tests/load/10k-cluster.yml --environment production
+#
+# (See 50k-scale.yml header for why `--count N` splits arrivalRate across local
+# workers rather than multiplying total throughput — same caveat applies here.)
+#
+# Concurrency check: avg session ≈ join-think(2s) + 15 × send-think(5.5s) ≈ 84.5s.
+# arrivalRate 118/s × 84.5s ≈ 9,970 concurrent — matches the 10,000 target.
+
+config:
+  target: "http://localhost:8080"
+  environments:
+    production:
+      target: "{{ $processEnvironment.TARGET_URL }}"
+  phases:
+    - name: "Warm-up"
+      duration: 60
+      arrivalRate: 30
+      maxVusers: 2500
+    - name: "Ramp to 10,000 concurrent"
+      duration: 300
+      arrivalRate: 30
+      rampTo: 118
+      maxVusers: 9500
+    - name: "Sustained Peak (~10,000 Concurrent)"
+      duration: 600
+      arrivalRate: 118
+      maxVusers: 11000
+  engines:
+    socketio-v3: {}
+  processor: "./scenarios/chat-chatter.js"
+  variables:
+    roomPoolSize: 1000 # ~10 users/room average at peak — matches the 50k stage's fan-out ratio
+  ensure:
+    p99: 80
+    maxErrorRate: 1
+
+scenarios:
+  - name: "Active Chat Session"
+    engine: socketio-v3
+    weight: 85
+    flow:
+      - function: "assignRoom"
+      - emit:
+          channel: "join_room"
+          data:
+            conversationId: "{{ roomId }}"
+      - think: "{{ $randomNumber(1,3) }}"
+      - loop:
+          - function: "sendEncryptedChatter"
+          - emit:
+              channel: "send_message"
+              data:
+                conversationId: "{{ roomId }}"
+                content: "{{ content }}"
+                isEncrypted: true
+                nonce: "{{ nonce }}"
+                encVersion: 1
+          - think: "{{ $randomNumber(4,7) }}"
+        count: 15
+      - emit:
+          channel: "leave_room"
+          data:
+            conversationId: "{{ roomId }}"
+
+  - name: "Media Upload Burst"
+    engine: http
+    weight: 15
+    flow:
+      - loop:
+          - post:
+              url: "/api/media/presigned-url"
+              json:
+                fileType: "image/jpeg"
+                fileExtension: "jpg"
+          - think: "{{ $randomNumber(10, 15) }}"
+        count: 6

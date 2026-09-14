@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { v4 as uuidv4 } from 'uuid';
 import { DynamoDbService } from '../dynamodb/dynamodb.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -8,6 +8,7 @@ export interface ChatMessage {
   conversationId: string;
   senderId: string;
   senderName: string;
+  senderAvatar?: string;
   content: string;
   mediaType: 'text' | 'image' | 'video' | 'audio' | 'file';
   mediaUrl?: string;
@@ -75,6 +76,9 @@ export class ChatService {
   ): Promise<ConversationItem> {
     const id = uuidv4();
     const participants = Array.from(new Set([initiatorId, ...participantIds]));
+    if (participants.length > 1024) {
+      throw new BadRequestException('Group chat maximum capacity reached (max 1024 members)');
+    }
     const now = new Date().toISOString();
     const conv: ConversationItem = {
       id,
@@ -109,8 +113,62 @@ export class ChatService {
     return conv;
   }
 
+  async addParticipant(conversationId: string, userId: string): Promise<ConversationItem> {
+    const conv = await this.getConversation(conversationId);
+    if (!conv) throw new BadRequestException('Conversation not found');
+    if (conv.participants.includes(userId)) return conv;
+    if (conv.participants.length >= 1024) {
+      throw new BadRequestException('Group chat maximum capacity reached (max 1024 members)');
+    }
+    conv.participants.push(userId);
+    conv.updatedAt = new Date().toISOString();
+    await this.db.put({
+      PK: `CONV#${conversationId}`,
+      SK: 'METADATA',
+      ...conv,
+    });
+    await this.db.put({
+      PK: `USER#${userId}`,
+      SK: `CONV#${conversationId}`,
+      conversationId,
+      role: 'member',
+      joinedAt: conv.updatedAt,
+      isMuted: false,
+      cachedTitle: conv.title,
+      cachedType: conv.type,
+      cachedUpdatedAt: conv.updatedAt,
+    });
+    return conv;
+  }
+
   async getConversation(conversationId: string): Promise<ConversationItem | null> {
     return this.db.get<ConversationItem>(`CONV#${conversationId}`, 'METADATA');
+  }
+
+  /**
+   * Find the existing 1:1 direct conversation between two users, if any.
+   * Scans the caller's membership rows (bounded) and matches a direct
+   * conversation whose participant set is exactly {a, b}.
+   */
+  async findDirectConversation(a: string, b: string): Promise<ConversationItem | null> {
+    const memberships = await this.db.queryByPk<MembershipItem>(`USER#${a}`, 'CONV#', 100);
+    for (const m of memberships) {
+      const conv = await this.getConversation(m.conversationId);
+      if (!conv || conv.type !== 'direct' || !Array.isArray(conv.participants)) continue;
+      const set = new Set(conv.participants);
+      if (set.size === 2 && set.has(a) && set.has(b)) return conv;
+    }
+    return null;
+  }
+
+  /**
+   * Idempotent 1:1 open — invite links and username search both land here,
+   * so double-taps and re-opened links never duplicate the chat.
+   */
+  async findOrCreateDirectConversation(a: string, b: string): Promise<ConversationItem> {
+    const existing = await this.findDirectConversation(a, b);
+    if (existing) return existing;
+    return this.createConversation(a, [b], undefined, 'direct');
   }
 
   async isMember(conversationId: string, userId: string): Promise<boolean> {
@@ -150,6 +208,7 @@ export class ChatService {
     mediaUrl?: string,
     replyTo?: ChatMessage['replyTo'],
     e2ee?: { isEncrypted?: boolean; nonce?: string; encVersion?: number },
+    senderAvatar?: string,
   ): Promise<ChatMessage> {
     const id = uuidv4();
     const now = new Date().toISOString();
@@ -164,6 +223,7 @@ export class ChatService {
       conversationId,
       senderId,
       senderName,
+      senderAvatar,
       content,
       mediaType,
       mediaUrl,
@@ -264,6 +324,26 @@ export class ChatService {
     await this.db.update(`USER#${userId}`, `CONV#${conversationId}`, 'SET lastReadMessageId = :m', {
       ':m': messageId,
     });
+  }
+
+  /**
+   * Read receipts that survive reloads: every member's `lastReadMessageId`
+   * cursor. The author marks its own messages ✓✓ once every *other*
+   * member's cursor has passed them (single other member for 1:1 chats).
+   * Message items keep `status: 'sent'` — receipts are derived, never
+   * rewritten per message, so reads stay O(participants) cheap.
+   */
+  async getReadCursors(conversationId: string): Promise<Record<string, string>> {
+    const conv = await this.getConversation(conversationId);
+    if (!conv?.participants?.length) return {};
+    const out: Record<string, string> = {};
+    await Promise.all(
+      conv.participants.map(async (userId) => {
+        const m = await this.db.get<MembershipItem>(`USER#${userId}`, `CONV#${conversationId}`);
+        if (m?.lastReadMessageId) out[userId] = m.lastReadMessageId;
+      }),
+    );
+    return out;
   }
 
   private async dispatchPush(

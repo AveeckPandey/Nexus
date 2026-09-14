@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: nexus-server-service
+  namespace: nexus
+  annotations:
+    # Per-target-group health check for ip-target ALB routing: the API only
+    # serves /health and /api/*, so the default "/" check would fail.
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-path: /health
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-healthy-threshold: "2"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-interval: "15"
+spec:
+  type: ClusterIP
+  selector:
+    app: nexus-server
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080

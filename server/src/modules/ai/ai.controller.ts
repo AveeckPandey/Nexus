@@ -36,4 +36,24 @@ export class AiController {
       translatedText: await this.ai.translate(b.text, b.targetLang, b.sourceLang),
     };
   }
+
+  @Post('chat')
+  @UseGuards(CognitoAuthGuard)
+  async chat(@Body() b: { query?: string; senderName?: string }) {
+    if (!b.query) throw new BadRequestException('query required');
+    return {
+      success: true,
+      reply: await this.ai.chatReply(b.query, b.senderName || 'User'),
+    };
+  }
+
+  @Post('transcribe')
+  @UseGuards(CognitoAuthGuard)
+  async transcribe(@Body() b: { audio?: string }) {
+    if (!b.audio) throw new BadRequestException('audio payload required');
+    return {
+      success: true,
+      transcript: await this.ai.transcribe(b.audio),
+    };
+  }
 }

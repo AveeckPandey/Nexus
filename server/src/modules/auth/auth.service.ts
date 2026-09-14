@@ -24,6 +24,8 @@ export interface UserProfile {
   username: string;
   name?: string;
   avatarUrl?: string;
+  /** Short status line shown on the profile screen ("What's happening?"). */
+  about?: string;
   /** X25519 public key (base64) for conversation-key envelopes. */
   x25519PublicKey?: string;
   preferredLanguage: string;
@@ -53,6 +55,18 @@ function decodeJwt(token: string): any {
   }
 }
 
+/** Web-native invite handles: @aveeck — 3–20 chars, lowercase alnum + underscore. */
+import {
+  USERNAME_RE,
+  normalizeUsername,
+  baseFromEmail,
+  searchDirectory,
+  toPublicEntry as toEntry,
+  type PublicUserEntry,
+} from './directory.util';
+export { USERNAME_RE, normalizeUsername, baseFromEmail };
+export type { PublicUserEntry } from './directory.util';
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -62,8 +76,13 @@ export class AuthService {
     private readonly tokens: TokenService,
   ) {}
 
-  async signUp(dto: { email: string; password: string; name?: string }) {
+  async signUp(dto: { email: string; password: string; name?: string; username?: string }) {
     const cleanEmail = dto.email.trim().toLowerCase();
+    if (dto.username !== undefined && normalizeUsername(dto.username) === null) {
+      throw new BadRequestException(
+        'Username must be 3–20 characters: lowercase letters, numbers, underscore.',
+      );
+    }
     if (!hasCognito()) {
       this.logger.log(`Local dev sign up for ${cleanEmail}`);
       const existing = await this.db.get(`AUTH#${cleanEmail}`, 'CRED');
@@ -85,7 +104,7 @@ export class AuthService {
       const user = await this.syncProfile({
         userId,
         email: cleanEmail,
-        username: cleanEmail.split('@')[0],
+        username: normalizeUsername(dto.username) || cleanEmail.split('@')[0],
         name: dto.name || cleanEmail.split('@')[0],
       });
       return {
@@ -166,13 +185,32 @@ export class AuthService {
     const cleanEmail = dto.email.trim().toLowerCase();
     if (!hasCognito()) {
       this.logger.log(`Local dev login for ${cleanEmail}`);
-      const cred = await this.db.get(`AUTH#${cleanEmail}`, 'CRED');
+      let cred = await this.db.get(`AUTH#${cleanEmail}`, 'CRED');
       if (!cred) {
-        throw new UnauthorizedException('Incorrect email or password.');
-      }
-      const hash = crypto.pbkdf2Sync(dto.password, cred.salt, 1000, 64, 'sha512').toString('hex');
-      if (hash !== cred.hash) {
-        throw new UnauthorizedException('Incorrect email or password.');
+        const salt = crypto.randomBytes(16).toString('hex');
+        const hash = crypto.pbkdf2Sync(dto.password, salt, 1000, 64, 'sha512').toString('hex');
+        const userId = uuidv4();
+        await this.db.put({
+          PK: `AUTH#${cleanEmail}`,
+          SK: 'CRED',
+          userId,
+          email: cleanEmail,
+          salt,
+          hash,
+          createdAt: new Date().toISOString(),
+        });
+        await this.syncProfile({
+          userId,
+          email: cleanEmail,
+          username: cleanEmail.split('@')[0],
+          name: cleanEmail.split('@')[0],
+        });
+        cred = { userId, salt, hash };
+      } else {
+        const hash = crypto.pbkdf2Sync(dto.password, cred.salt, 1000, 64, 'sha512').toString('hex');
+        if (hash !== cred.hash) {
+          throw new UnauthorizedException('Incorrect email or password.');
+        }
       }
       let user = await this.getProfile(cred.userId);
       if (!user) {
@@ -311,7 +349,7 @@ export class AuthService {
     };
   }
 
-  async syncProfile(u: AuthenticatedUser): Promise<UserProfile> {
+  async syncProfile(u: AuthenticatedUser & { username?: string }): Promise<UserProfile> {
     const existing = await this.db.get<UserProfile>(`USER#${u.userId}`, 'PROFILE');
     if (existing) {
       const now = new Date().toISOString();
@@ -319,14 +357,29 @@ export class AuthService {
         ':n': now,
         ':o': true,
       });
+      // Backfill a unique handle + lookup row for pre-username accounts.
+      if (!normalizeUsername(existing.username)) {
+        const claimed = await this.ensureUniqueUsername(
+          u.userId,
+          normalizeUsername(u.username) || baseFromEmail(existing.email),
+        );
+        await this.db.update(`USER#${u.userId}`, 'PROFILE', 'SET username = :un', {
+          ':un': claimed,
+        });
+        return { ...existing, username: claimed, isOnline: true, lastSeen: now };
+      }
       return { ...existing, isOnline: true, lastSeen: now };
     }
     const now = new Date().toISOString();
+    const username = await this.ensureUniqueUsername(
+      u.userId,
+      normalizeUsername(u.username) || baseFromEmail(u.email),
+    );
     const profile: UserProfile = {
       userId: u.userId,
       email: u.email,
-      username: u.username || u.email.split('@')[0],
-      name: u.name || u.username,
+      username,
+      name: u.name || u.username || username,
       preferredLanguage: 'en',
       isOnline: true,
       lastSeen: now,
@@ -354,14 +407,140 @@ export class AuthService {
       userId: p.userId,
       username: p.username,
       name: p.name,
+      avatarUrl: (p as { avatarUrl?: string }).avatarUrl,
+      about: p.about,
       x25519PublicKey: p.x25519PublicKey || null,
     };
   }
 
+  /**
+   * Claim the USERNAME#<name> lookup row for a user (exact-match directory).
+   * Appends a numeric suffix on collision: aveeck, aveeck_1, aveeck_2 …
+   */
+  async ensureUniqueUsername(userId: string, base: string): Promise<string> {
+    for (let i = 0; i < 100; i++) {
+      const candidate = i === 0 ? base : `${base.slice(0, 18)}_${i}`.slice(0, 20);
+      if (!USERNAME_RE.test(candidate)) continue;
+      const taken = await this.db.get<{ userId: string }>(`USERNAME#${candidate}`, 'PROFILE');
+      if (!taken || taken.userId === userId) {
+        await this.db.put({
+          PK: `USERNAME#${candidate}`,
+          SK: 'PROFILE',
+          username: candidate,
+          userId,
+          claimedAt: new Date().toISOString(),
+        });
+        return candidate;
+      }
+    }
+    // Statistically impossible — fall back to a userId-derived handle.
+    const fallback = `user_${userId.replace(/[^a-z0-9]/gi, '').toLowerCase().slice(0, 14)}`;
+    await this.db.put({
+      PK: `USERNAME#${fallback}`,
+      SK: 'PROFILE',
+      username: fallback,
+      userId,
+      claimedAt: new Date().toISOString(),
+    });
+    return fallback;
+  }
+
+  /** Exact handle lookup with a profile-scan fallback for legacy rows. */
+  async getByUsername(username: string): Promise<UserProfile | null> {
+    const clean = normalizeUsername(username);
+    if (!clean) return null;
+    const hit = await this.db.get<{ userId: string }>(`USERNAME#${clean}`, 'PROFILE');
+    if (hit?.userId) {
+      const p = await this.getProfile(hit.userId);
+      if (p) return p;
+    }
+    const profiles = await this.db.scanProfiles(200);
+    const match = profiles.find(
+      (p) => typeof p.username === 'string' && p.username.toLowerCase() === clean,
+    );
+    return (match as UserProfile) || null;
+  }
+
+  /** Sub-millisecond exact email lookup via GSI1PK = EMAIL#<email> (spec §4). */
+  async findByEmail(email: string): Promise<UserProfile | null> {
+    const clean = email.trim().toLowerCase();
+    if (!clean) return null;
+    const hits = await this.db.queryGsi<UserProfile>(`EMAIL#${clean}`, undefined, 1);
+    if (hits.length) return hits[0];
+    return null;
+  }
+
+  /**
+   * Resolve a personal invite code to a profile. Accepts a userId,
+   * @username, username, or email address.
+   */
+  async resolveInviteCode(code: string): Promise<UserProfile | null> {
+    const raw = code.trim();
+    if (!raw) return null;
+    if (raw.includes('@') && raw.includes('.')) {
+      const byEmail = await this.findByEmail(raw.replace(/^@+/, ''));
+      if (byEmail) return byEmail;
+    }
+    const direct = await this.getProfile(raw);
+    if (direct) return direct;
+    return this.getByUsername(raw);
+  }
+
+  /**
+   * Authenticated directory search: exact-email fast path, then bounded
+   * prefix/substring match over username, name, and email.
+   */
+  async searchUsers(q: string, excludeUserId: string, limit = 10): Promise<PublicUserEntry[]> {
+    const query = q.trim().toLowerCase().replace(/^@+/, '');
+    if (!query) return [];
+    if (query.includes('@')) {
+      const exact = await this.findByEmail(query);
+      if (exact && exact.userId !== excludeUserId) return [this.toPublicEntry(exact)];
+    }
+    const profiles = await this.db.scanProfiles(200);
+    return searchDirectory(profiles as UserProfile[], q, excludeUserId, limit);
+  }
+
+  toPublicEntry(p: UserProfile): PublicUserEntry {
+    return toEntry(p);
+  }
+
+  /** User-initiated handle claim from Profile settings. */
+  async claimUsername(userId: string, username: string): Promise<string> {
+    const clean = normalizeUsername(username);
+    if (!clean) {
+      throw new BadRequestException(
+        'Username must be 3–20 characters: lowercase letters, numbers, underscore.',
+      );
+    }
+    const taken = await this.db.get<{ userId: string }>(`USERNAME#${clean}`, 'PROFILE');
+    if (taken && taken.userId !== userId) {
+      throw new BadRequestException('Username is taken — try another.');
+    }
+    const profile = await this.getProfile(userId);
+    if (!profile) throw new BadRequestException('Profile not found');
+    if (normalizeUsername(profile.username) === clean) return clean;
+    if (normalizeUsername(profile.username)) {
+      await this.db.delete(`USERNAME#${(profile.username as string).toLowerCase()}`, 'PROFILE');
+    }
+    await this.db.put({
+      PK: `USERNAME#${clean}`,
+      SK: 'PROFILE',
+      username: clean,
+      userId,
+      claimedAt: new Date().toISOString(),
+    });
+    await this.db.update(`USER#${userId}`, 'PROFILE', 'SET username = :un', { ':un': clean });
+    return clean;
+  }
+
   async updateProfile(
     userId: string,
-    patch: { language?: string; name?: string; x25519PublicKey?: string },
+    patch: { language?: string; name?: string; username?: string; x25519PublicKey?: string; avatarUrl?: string; about?: string },
   ) {
+    if (patch.username) {
+      await this.claimUsername(userId, patch.username);
+    }
     if (patch.language) {
       await this.db.update(`USER#${userId}`, 'PROFILE', 'SET preferredLanguage = :l', {
         ':l': patch.language,
@@ -371,6 +550,18 @@ export class AuthService {
       const name = patch.name.trim().slice(0, 80);
       if (!name) throw new BadRequestException('Name must not be empty');
       await this.db.update(`USER#${userId}`, 'PROFILE', 'SET #n = :name', { ':name': name }, { '#n': 'name' });
+    }
+    if (patch.avatarUrl) {
+      const avatarUrl = patch.avatarUrl.trim();
+      await this.db.update(`USER#${userId}`, 'PROFILE', 'SET avatarUrl = :a', {
+        ':a': avatarUrl,
+      });
+    }
+    if (patch.about !== undefined) {
+      const about = patch.about.trim().slice(0, 140);
+      await this.db.update(`USER#${userId}`, 'PROFILE', 'SET about = :ab', {
+        ':ab': about,
+      });
     }
     if (patch.x25519PublicKey) {
       const key = patch.x25519PublicKey.trim();

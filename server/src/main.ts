@@ -1,3 +1,8 @@
+import * as dotenv from 'dotenv';
+import * as path from 'path';
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
+dotenv.config();
+
 import { NestFactory } from '@nestjs/core';
 import {
   FastifyAdapter,
@@ -24,6 +29,9 @@ async function bootstrap() {
 
   // Security headers (threat model §10) — no extra deps, Fastify hooks only.
   const fastify = app.getHttpAdapter().getInstance();
+  fastify.addContentTypeParser('*', { parseAs: 'buffer' }, (_req: any, body: any, done: any) => {
+    done(null, body);
+  });
   fastify.addHook('onRequest', async (req: any, reply: any) => {
     reply.header('X-Content-Type-Options', 'nosniff');
     reply.header('X-Frame-Options', 'DENY');
@@ -31,7 +39,7 @@ async function bootstrap() {
     reply.header(
       'Content-Security-Policy',
       "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
-        'img-src \'self\' data: blob: https:; media-src \'self\' blob: https:; ' +
+        'img-src \'self\' data: blob: https: http:; media-src \'self\' blob: https: http:; ' +
         'connect-src \'self\' ' +
         origins.join(' ') +
         ' https://oauth2.googleapis.com; frame-ancestors \'none\'',

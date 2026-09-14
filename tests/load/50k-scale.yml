@@ -1,0 +1,74 @@
+# tests/load/50k-scale.yml — Stage 3: 50,000 concurrent users, multi-node cluster.
+# Target: 3x ECS/EKS pods (2 vCPU, 4 GB each) behind ALB + cache.t4g.medium Redis.
+# Requires @socket.io/redis-adapter syncing room events across nodes.
+# Pass: ALB even ±10% · Redis CPU < 40% · 0 drops during rolling updates · 2,500 msg/s.
+# Run (distributed):
+#   artillery run --output ./results/50k-report.json tests/load/50k-scale.yml
+#   artillery run --environment production tests/load/50k-scale.yml
+
+config:
+  target: "http://localhost:8080"
+  environments:
+    production:
+      target: "{{ $processEnvironment.TARGET_URL }}"
+  phases:
+    - name: "Warm-up"
+      duration: 120
+      arrivalRate: 50
+      maxVusers: 10000
+    - name: "Ramp to 50,000 users"
+      duration: 600
+      arrivalRate: 50
+      rampTo: 500
+      maxVusers: 45000
+    - name: "Sustained Peak (50,000 Concurrent)"
+      duration: 900
+      arrivalRate: 500
+      maxVusers: 55000
+  engines:
+    socketio-v3: {}
+  processor: "./scenarios/chat-chatter.js"
+  variables:
+    roomPoolSize: 100
+  ensure:
+    p95: 100
+    maxErrorRate: 1
+
+scenarios:
+  - name: "Active Chat Session"
+    engine: socketio-v3
+    weight: 85
+    flow:
+      - function: "assignRoom"
+      - emit:
+          channel: "join_room"
+          data:
+            conversationId: "{{ roomId }}"
+      - think: 1
+      - loop:
+          - function: "sendEncryptedChatter"
+          - emit:
+              channel: "send_message"
+              data:
+                conversationId: "{{ roomId }}"
+                content: "{{ content }}"
+                isEncrypted: true
+                nonce: "{{ nonce }}"
+                encVersion: 1
+          - think: "{{ $randomNumber(2, 6) }}"
+        count: 20
+      - emit:
+          channel: "leave_room"
+          data:
+            conversationId: "{{ roomId }}"
+
+  - name: "Media Upload Burst"
+    engine: http
+    weight: 15
+    flow:
+      - post:
+          url: "/api/media/presigned-url"
+          json:
+            fileType: "image/jpeg"
+            fileExtension: "jpg"
+      - think: "{{ $randomNumber(3, 8) }}"

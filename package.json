@@ -1,0 +1,40 @@
+{
+  "name": "nexus-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Nexus TESTING_SPEC.md suite: unit, integration, security, e2e, load",
+  "scripts": {
+    "test": "jest tests/unit tests/integration tests/security",
+    "test:unit": "jest tests/unit",
+    "test:integration": "jest tests/integration",
+    "test:security": "jest tests/security",
+    "test:e2e": "playwright test tests/e2e/",
+    "test:load:1k": "node tests/load/benchmark-1k.js",
+    "test:load:2pod": "node tests/load/benchmark-2pod.js",
+    "test:load:10k": "node tests/load/benchmark-10k.js",
+    "test:load:50k": "node tests/load/benchmark-50k.js",
+    "test:load:100k": "node tests/load/benchmark-100k.js",
+    "test:mem": "clinic doctor --on-port 'artillery run tests/load/1k-baseline.yml' -- npm run start:prod --prefix server",
+    "benchmark:1k": "node tests/load/benchmark-1k.js",
+    "benchmark:2pod": "node tests/load/benchmark-2pod.js",
+    "benchmark:10k": "node tests/load/benchmark-10k.js",
+    "benchmark:50k": "node tests/load/benchmark-50k.js",
+    "benchmark:100k": "node tests/load/benchmark-100k.js",
+    "pipeline": "node scripts/verify-pipeline.js",
+    "pipeline:canary": "node scripts/verify-pipeline.js --canary-only"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/jest": "^29.5.12",
+    "@types/node": "^22.13.9",
+    "artillery": "^2.0.0",
+    "artillery-engine-socketio-v3": "^1.2.0",
+    "clinic": "^13.0.0",
+    "jest": "^29.7.0",
+    "reflect-metadata": "^0.2.2",
+    "ts-jest": "^29.1.2",
+    "tweetnacl": "^1.0.3",
+    "tweetnacl-util": "^0.15.1",
+    "typescript": "^5.5.4"
+  }
+}

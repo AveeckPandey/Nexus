@@ -38,3 +38,19 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+
+# Security & Secrets
+*.pem
+*.key
+*.cert
+infra/nexus-ec2-key.pem
+infra/k8s/k3s-complete-deploy.yaml
+scripts/*.json
+
+# Artifacts & Uploads
+*.tar.gz
+*.tar
+server/uploads/
+test-results/
+coverage/
+web/tsconfig.tsbuildinfo

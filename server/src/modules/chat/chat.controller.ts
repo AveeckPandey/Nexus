@@ -9,6 +9,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { ChatService } from './chat.service';
+import { AuthService } from '../auth/auth.service';
 import { CognitoAuthGuard } from '../../common/guards/cognito-auth.guard';
 import { MemberGuard } from './guards/member.guard';
 import {
@@ -18,7 +19,10 @@ import {
 
 @Controller('api/chat')
 export class ChatController {
-  constructor(private readonly chat: ChatService) {}
+  constructor(
+    private readonly chat: ChatService,
+    private readonly auth: AuthService,
+  ) {}
 
   @Get('conversations')
   @UseGuards(CognitoAuthGuard)
@@ -41,6 +45,33 @@ export class ChatController {
     return { success: true, conversation };
   }
 
+  /**
+   * One-click invite target: open (or create) the 1:1 chat with another
+   * user. Idempotent — re-opening a share link returns the same room.
+   */
+  @Post('conversations/direct')
+  @UseGuards(CognitoAuthGuard)
+  async direct(
+    @CurrentUser() u: AuthenticatedUser,
+    @Body() b: { otherUserId?: string },
+  ) {
+    const otherId = b.otherUserId?.trim();
+    if (!otherId) throw new BadRequestException('otherUserId required');
+    if (otherId === u.userId) throw new BadRequestException('You cannot chat with yourself');
+    const other = await this.auth.getProfile(otherId);
+    if (!other) throw new BadRequestException('User not found');
+    const existing = await this.chat.findDirectConversation(u.userId, otherId);
+    if (existing) return { success: true, conversation: existing, created: false };
+    const title = other.name || (other.username ? `@${other.username}` : 'Direct Chat');
+    const conversation = await this.chat.createConversation(
+      u.userId,
+      [otherId],
+      title,
+      'direct',
+    );
+    return { success: true, conversation, created: true };
+  }
+
   @Get('messages/:conversationId')
   @UseGuards(CognitoAuthGuard, MemberGuard)
   async messages(
@@ -57,10 +88,20 @@ export class ChatController {
     return { success: true, messages, nextCursor };
   }
 
+  /**
+   * Read-receipt cursors (`userId → lastReadMessageId`) for a conversation.
+   * Lets the author render ✓✓ after reloads, even when the read happened
+   * while they were offline or in another room.
+   */
+  @Get('conversations/:id/read')
+  @UseGuards(CognitoAuthGuard, MemberGuard)
+  async readCursors(@Param('id') id: string) {
+    return { success: true, cursors: await this.chat.getReadCursors(id) };
+  }
+
   @Get('conversations/:id/key')
   @UseGuards(CognitoAuthGuard, MemberGuard)
-  async getKey(@Param('id') id: string, @CurrentUser() u: AuthenticatedUser) {
-    const envelope = await this.chat.getKeyEnvelope(id, u.userId);
+  async getKey(@Param('id') id: string, @CurrentUser() u: AuthenticatedUser) {    const envelope = await this.chat.getKeyEnvelope(id, u.userId);
     return { success: true, envelope: envelope || null };
   }
 

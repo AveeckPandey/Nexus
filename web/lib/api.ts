@@ -55,6 +55,15 @@ api.interceptors.response.use(
   },
 );
 
+export interface PublicUser {
+  userId: string;
+  username: string;
+  name?: string;
+  avatarUrl?: string;
+  about?: string;
+  x25519PublicKey?: string | null;
+}
+
 export const authApi = {
   config: () => api.get('/api/auth/config').then((r) => r.data),
   signup: (email: string, password: string, name?: string) =>
@@ -66,28 +75,72 @@ export const authApi = {
     api.post('/api/auth/login', { email, password }).then((r) => r.data),
   google: (credential: string) => api.post('/api/auth/google', { credential }).then((r) => r.data),
   me: () => api.get('/api/auth/me').then((r) => r.data),
-  profile: (patch: { language?: string; name?: string; x25519PublicKey?: string }) =>
+  profile: (patch: { language?: string; name?: string; username?: string; x25519PublicKey?: string; avatarUrl?: string; about?: string }) =>
     api.patch('/api/auth/profile', patch).then((r) => r.data),
   publicUser: (id: string) => api.get(`/api/auth/users/${id}`).then((r) => r.data.user),
   language: (language: string) => api.patch('/api/auth/language', { language }),
+  search: (q: string) =>
+    api.get(`/api/auth/search?q=${encodeURIComponent(q)}`).then((r) => r.data.users as PublicUser[]),
+  resolveInvite: (code: string) =>
+    api.get(`/api/auth/resolve/${encodeURIComponent(code)}`).then((r) => r.data.user as PublicUser),
+  inviteMe: () =>
+    api
+      .get('/api/auth/invite/me')
+      .then((r) => r.data.invite as { userId: string; username: string; name?: string }),
+  claimUsername: (username: string) =>
+    api.patch('/api/auth/profile', { username }).then((r) => r.data),
 };
 
 export const chatApi = {
   conversations: () => api.get('/api/chat/conversations').then((r) => r.data.conversations),
   createConversation: (participantIds: string[], title?: string, type: 'direct' | 'group' = 'direct') =>
     api.post('/api/chat/conversations', { participantIds, title, type }).then((r) => r.data.conversation),
+  /** Idempotent 1:1 open for invite links + username search (no duplicates). */
+  directConversation: (otherUserId: string) =>
+    api
+      .post('/api/chat/conversations/direct', { otherUserId })
+      .then((r) => r.data.conversation),
   messages: (id: string, limit = 50, cursor?: string | null) =>
     api
       .get(`/api/chat/messages/${id}?limit=${limit}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`)
       .then((r) => r.data as { messages: unknown[]; nextCursor: string | null }),
   getKey: (id: string) => api.get(`/api/chat/conversations/${id}/key`).then((r) => r.data.envelope),
+  /** Read-receipt cursors (userId → lastReadMessageId) for ✓✓ after reloads. */
+  readCursors: (id: string) =>
+    api.get(`/api/chat/conversations/${id}/read`).then((r) => r.data.cursors as Record<string, string>),
   putKey: (id: string, body: { recipientId: string; encryptedKey: string; nonce: string; senderPub: string; keyVersion?: number }) =>
     api.post(`/api/chat/conversations/${id}/key`, body).then((r) => r.data),
 };
 
 export const ghostApi = {
-  createInvite: () => api.post('/api/ghost/invite').then((r) => r.data),
-  joinInvite: (token: string) => api.get(`/api/ghost/join/${token}`).then((r) => r.data),
+  createInvite: (guestId?: string) =>
+    api.post(`/api/ghost/invite${guestId ? `?guestId=${encodeURIComponent(guestId)}` : ''}`).then((r) => r.data),
+  joinInvite: (token: string, guestId?: string) =>
+    api.get(`/api/ghost/join/${encodeURIComponent(token)}${guestId ? `?guestId=${encodeURIComponent(guestId)}` : ''}`).then((r) => r.data),
+  /** Wipe a whole ghost room (messages + members). Participant-only. */
+  destroyRoom: (roomId: string, guestId?: string) =>
+    api.delete(`/api/ghost/room/${encodeURIComponent(roomId)}${guestId ? `?guestId=${encodeURIComponent(guestId)}` : ''}`).then((r) => r.data),
+};
+
+export interface StoryItem {
+  PK: string;
+  SK: string;
+  userId: string;
+  mediaUrl: string;
+  mediaType: string;
+  createdAt: string;
+  expire_at: number;
+  views: { viewerId: string; viewedAt: string }[];
+}
+
+export const storiesApi = {
+  post: (mediaUrl: string, mediaType = 'image') =>
+    api.post('/api/stories', { mediaUrl, mediaType }).then((r) => r.data.story as StoryItem),
+  mine: () => api.get('/api/stories').then((r) => r.data.stories as StoryItem[]),
+  byUser: (userId: string) =>
+    api.get(`/api/stories/${encodeURIComponent(userId)}`).then((r) => r.data.stories as StoryItem[]),
+  recordView: (ownerId: string, itemSk: string) =>
+    api.post(`/api/stories/${encodeURIComponent(ownerId)}/views`, { itemSk }).then((r) => r.data.receipt),
 };
 
 export const mediaApi = {
@@ -108,6 +161,10 @@ export const aiApi = {
     api
       .post('/api/ai/translate', { text, targetLang, sourceLang })
       .then((r) => r.data.translatedText as string),
+  chat: (query: string, senderName?: string) =>
+    api.post('/api/ai/chat', { query, senderName }).then((r) => r.data.reply as string),
+  transcribe: (audio: string) =>
+    api.post('/api/ai/transcribe', { audio }).then((r) => r.data.transcript as string),
 };
 
 export const notifyApi = {

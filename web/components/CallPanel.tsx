@@ -5,11 +5,14 @@ import { Button } from '@heroui/react';
 import { getSocket } from '@/lib/socket';
 import { MeshCall } from '@/lib/webrtc';
 import { useCallStore } from '@/store/call';
+import { useNetworkStore } from '@/store/network';
+import { PhoneIcon, VideoIcon, InfoIcon } from './MenuIcons';
 
 export function CallPanel() {
   const activeCallId = useCallStore((s) => s.activeCallId);
   const callType = useCallStore((s) => s.callType);
   const end = useCallStore((s) => s.end);
+  const isSlow = useNetworkStore((s) => s.isSlow);
   const [remotes, setRemotes] = useState<Record<string, MediaStream>>({});
   const [muted, setMuted] = useState(false);
   const [sharing, setSharing] = useState(false);
@@ -115,9 +118,19 @@ export function CallPanel() {
   const ids = Object.keys(remotes);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/90 flex flex-col p-4">
-      <b className="text-center text-sm mb-3">{callType === 'audio' ? '🔊 Audio call' : '📹 Video call'}</b>
-      <div className={`flex-1 grid gap-2 ${ids.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+    <div className="fixed inset-0 z-50 bg-black/90 flex flex-col p-4 overflow-hidden">
+      <div className="flex items-center justify-center gap-2 mb-3">
+        <b className="text-center text-sm flex items-center gap-1.5">
+          {callType === 'audio' ? <PhoneIcon size={14} /> : <VideoIcon size={14} />}
+          {callType === 'audio' ? 'Audio call' : 'Video call'}
+        </b>
+        {isSlow && (
+          <span className="px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[10px] animate-pulse flex items-center gap-1">
+            <InfoIcon size={10} /> Poor connection
+          </span>
+        )}
+      </div>
+      <div className={`flex-1 min-h-0 grid gap-2 ${ids.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
         <video ref={localRef} autoPlay muted playsInline className="w-full h-full object-cover rounded-xl bg-whatsapp-composer" />
         {ids.map((id) => (
           <RemoteVideo key={id} stream={remotes[id]} />
@@ -127,7 +140,7 @@ export function CallPanel() {
         <Button variant="flat" onPress={toggleMute}>{muted ? 'Unmute' : 'Mute'}</Button>
         {callType !== 'audio' && (
           <Button variant="flat" color={sharing ? 'warning' : 'default'} onPress={toggleShare}>
-            {sharing ? 'Stop sharing' : '🖥️ Share screen'}
+            {sharing ? 'Stop sharing' : 'Share screen'}
           </Button>
         )}
         <Button color="danger" onPress={hangup}>End call</Button>
@@ -143,3 +156,4 @@ function RemoteVideo({ stream }: { stream: MediaStream }) {
   }, [stream]);
   return <video ref={ref} autoPlay playsInline className="w-full h-full object-cover rounded-xl bg-whatsapp-composer" />;
 }
+

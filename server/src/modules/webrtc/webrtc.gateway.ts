@@ -22,6 +22,9 @@ export class WebRtcGateway implements OnGatewayConnection {
   async handleConnection(client: Socket) {
     try {
       const token = (client.handshake.auth?.token as string) || '';
+      if (token && token.startsWith('guest')) {
+        return;
+      }
       const user = await this.tokens.verify(token);
       client.data.userId = user.userId;
       // Per-user notification room — rings regardless of open chat view.
@@ -74,12 +77,18 @@ export class WebRtcGateway implements OnGatewayConnection {
     @ConnectedSocket() c: Socket,
     @MessageBody() d: { callId: string; conversationId: string },
   ) {
-    c.join(d.callId);
     const call = this.calls.getCall(d.callId);
-    if (call) {
-      call.status = 'active';
-      call.participants.add(c.id);
+    if (!call) return { status: 'error', message: 'Call not found' };
+    if (call.participants.size >= 5) {
+      c.emit('call_rejected', {
+        callId: d.callId,
+        reason: 'Call is full (maximum 5 participants for P2P mesh)',
+      });
+      return { status: 'full', message: 'Maximum 5 participants' };
     }
+    c.join(d.callId);
+    call.status = 'active';
+    call.participants.add(c.id);
     this.server.to(d.callId).emit('call_started', {
       callId: d.callId,
       peerId: c.id,

@@ -13,6 +13,7 @@
     "baseUrl": "./",
     "incremental": true,
     "skipLibCheck": true,
+    "types": ["node"],
     "strictNullChecks": true,
     "noImplicitAny": false,
     "forceConsistentCasingInFileNames": true

@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nexus-server
+  namespace: nexus
+  labels:
+    app: nexus-server
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: nexus-server
+  template:
+    metadata:
+      labels:
+        app: nexus-server
+    spec:
+      serviceAccountName: nexus-server-sa
+      containers:
+        - name: server
+          # Replace with the `ecr_server_url` terraform output, e.g.
+          # 123456789012.dkr.ecr.us-east-1.amazonaws.com/nexus-prod-server:latest
+          image: REPLACE_WITH_TERRAFORM_OUTPUT_ecr_server_url:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          env:
+            - name: NODE_OPTIONS
+              value: "--max-old-space-size=6144"
+          envFrom:
+            - configMapRef:
+                name: nexus-server-config
+            - secretRef:
+                name: nexus-server-secret
+          resources:
+            requests:
+              cpu: "1500m"
+              memory: "6Gi"
+            limits:
+              cpu: "4000m"
+              memory: "8Gi"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20

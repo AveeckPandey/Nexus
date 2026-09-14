@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nexus-web
+  namespace: nexus
+  labels:
+    app: nexus-web
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nexus-web
+  template:
+    metadata:
+      labels:
+        app: nexus-web
+    spec:
+      containers:
+        - name: web
+          # Replace with the `ecr_web_url` terraform output, e.g.
+          # 123456789012.dkr.ecr.us-east-1.amazonaws.com/nexus-prod-web:latest
+          image: REPLACE_WITH_TERRAFORM_OUTPUT_ecr_web_url:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+          env:
+            - name: PORT
+              value: "3000"
+            - name: NODE_ENV
+              value: production
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 20
+            periodSeconds: 30

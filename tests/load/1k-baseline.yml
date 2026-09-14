@@ -1,0 +1,68 @@
+# tests/load/1k-baseline.yml — Stage 1: 1,000 concurrent users, AWS Free Tier baseline.
+# Target: 1x EC2 t2.micro (1 vCPU, 1 GB RAM).
+#
+# Pass criteria and how each is actually measured:
+#   - mem < 450MB          -> CloudWatch agent / `docker stats` on the instance during the run, NOT Artillery
+#   - p95 < 50ms            -> Artillery's own summary report (this file measures this one directly)
+#   - 0 dropped sockets     -> server-side connection/disconnect log, cross-referenced after the run
+#   - 25-35 msg/s           -> server-side Socket.IO message counter, NOT Artillery's req/s
+#
+# Run:
+#   npx artillery run tests/load/1k-baseline.yml
+#   npx artillery run tests/load/1k-baseline.yml --environment production
+#
+# Concurrency check: avg session ≈ join-think(2s) + 10 × send-think(5s) ≈ 52s.
+# arrivalRate 19/s × 52s ≈ 988 concurrent — matches the 1,000 target.
+
+config:
+  target: "http://localhost:8080"
+  environments:
+    production:
+      target: "{{ $processEnvironment.TARGET_URL }}"
+  phases:
+    - name: "Warm-up"
+      duration: 30
+      arrivalRate: 5
+    - name: "Ramp to 1,000 concurrent"
+      duration: 60
+      arrivalRate: 5
+      rampTo: 19
+    - name: "Sustained Peak (~1,000 Concurrent)"
+      duration: 300
+      arrivalRate: 19
+      maxVusers: 1100
+  engines:
+    socketio-v3: {}
+  processor: "./scenarios/chat-chatter.js"
+  variables:
+    roomPoolSize: 20 # small pool is intentional here: forces some room contention on a single node
+  ensure:
+    p95: 50
+    maxErrorRate: 1
+
+scenarios:
+  - name: "Active Chat Session"
+    engine: socketio-v3
+    flow:
+      - function: "assignRoom"
+      - emit:
+          channel: "join_room"
+          data:
+            conversationId: "{{ roomId }}"
+      - think: "{{ $randomNumber(1,3) }}"
+      - loop:
+          - function: "sendEncryptedChatter"
+          - emit:
+              channel: "send_message"
+              data:
+                conversationId: "{{ roomId }}"
+                content: "{{ content }}"
+                isEncrypted: true
+                nonce: "{{ nonce }}"
+                encVersion: 1
+          - think: "{{ $randomNumber(3,7) }}"
+        count: 10
+      - emit:
+          channel: "leave_room"
+          data:
+            conversationId: "{{ roomId }}"

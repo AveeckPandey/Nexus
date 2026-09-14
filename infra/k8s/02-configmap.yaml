@@ -1,0 +1,33 @@
+# Non-secret env. Fill REPLACE_* values from `terraform output` after apply.
+# NOTE on nexus-web-config: NEXT_PUBLIC_* vars are inlined into the browser
+# bundle at `docker build` time, so they live here for reference AND must be
+# passed as --build-arg when building web/Dockerfile (rebuild to change).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nexus-server-config
+  namespace: nexus
+data:
+  PORT: "8080"
+  NODE_ENV: "production"
+  CLIENT_ORIGIN: "https://nexus.yourdomain.com"
+  AWS_REGION: "us-east-1"
+  DYNAMODB_TABLE_NAME: "NexusTable"
+  S3_BUCKET_NAME: "REPLACE_WITH_TERRAFORM_OUTPUT_s3_media_bucket"
+  CLOUDFRONT_DOMAIN: "REPLACE_WITH_TERRAFORM_OUTPUT_cloudfront_domain"
+  GROQ_MODEL: "llama-3.3-70b-versatile"
+  VAPID_SUBJECT: "mailto:admin@nexus.app"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nexus-web-config
+  namespace: nexus
+data:
+  NEXT_PUBLIC_API_URL: "https://nexus.yourdomain.com"
+  NEXT_PUBLIC_WS_URL: "https://nexus.yourdomain.com"
+  NEXT_PUBLIC_COGNITO_REGION: "us-east-1"
+  NEXT_PUBLIC_COGNITO_USER_POOL_ID: "REPLACE_WITH_TERRAFORM_OUTPUT_cognito_user_pool_id"
+  NEXT_PUBLIC_COGNITO_CLIENT_ID: "REPLACE_WITH_TERRAFORM_OUTPUT_cognito_client_id"
+  NEXT_PUBLIC_GOOGLE_CLIENT_ID: ""
+  NEXT_PUBLIC_VAPID_PUBLIC_KEY: ""

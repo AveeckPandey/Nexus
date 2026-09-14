@@ -1,0 +1,71 @@
+name: Nexus CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  security-and-tests:
+    name: Security, Unit & Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Root Dependencies
+        run: npm ci || npm install
+
+      - name: Install Server Dependencies
+        run: npm --prefix server ci || npm --prefix server install
+
+      - name: Install Web Dependencies
+        run: npm --prefix web ci || npm --prefix web install
+
+      - name: Run Stage 1 - Security Gates (Zero-Knowledge, IDOR, XSS, Memory Leak)
+        run: npm run test:security
+
+      - name: Run Stage 2 - Unit Tests (Crypto, Auth, Search, Features)
+        run: npm run test:unit
+
+      - name: Run Stage 3 - Integration Tests (Chat, Media, Reactions, Stories Contract)
+        run: npm run test:integration
+
+  build-and-verify:
+    name: Production Builds & Canary Verification
+    needs: security-and-tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: |
+          npm ci || npm install
+          npm --prefix server ci || npm --prefix server install
+          npm --prefix web ci || npm --prefix web install
+
+      - name: Build Backend Server (NestJS + Fastify)
+        run: npm --prefix server run build
+
+      - name: Build Web Frontend (Next.js 14)
+        run: npm --prefix web run build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8080
+          NEXT_PUBLIC_WS_URL: http://localhost:8080
+
+      - name: Verify Kubernetes & Canary Deployment Specs
+        run: npm run pipeline:canary

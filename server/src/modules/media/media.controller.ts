@@ -1,16 +1,49 @@
 import {
   Controller,
   Post,
+  Put,
+  Get,
   Body,
   UseGuards,
   BadRequestException,
+  NotFoundException,
+  Req,
+  Res,
 } from '@nestjs/common';
+import * as fs from 'fs';
+import * as path from 'path';
 import { MediaService } from './media.service';
 import { CognitoAuthGuard } from '../../common/guards/cognito-auth.guard';
 import {
   CurrentUser,
   AuthenticatedUser,
 } from '../../common/decorators/current-user.decorator';
+
+const UPLOAD_ROOT = path.resolve(process.cwd(), 'uploads');
+
+function getSafeFilePath(rawKey: string): string {
+  const cleaned = rawKey.replace(/\\/g, '/').replace(/^\/+/, '');
+  if (cleaned.includes('..')) {
+    throw new BadRequestException('Invalid path');
+  }
+  const rel = cleaned.startsWith('uploads/') ? cleaned.slice('uploads/'.length) : cleaned;
+  return path.join(UPLOAD_ROOT, rel);
+}
+
+const MIME_TYPES: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+  '.svg': 'image/svg+xml',
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.ogg': 'audio/ogg',
+  '.pdf': 'application/pdf',
+};
 
 @Controller('api/media')
 export class MediaController {
@@ -26,5 +59,44 @@ export class MediaController {
       throw new BadRequestException('fileType and fileExtension required');
     }
     return this.media.presignedPut(u.userId, b.fileType, b.fileExtension);
+  }
+
+  @Put('upload/*')
+  async uploadLocal(@Req() req: any) {
+    const rawKey = req.params?.['*'] || req.url.split('?')[0].replace(/^\/api\/media\/upload\/?/, '');
+    const filePath = getSafeFilePath(rawKey);
+    await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+
+    if (Buffer.isBuffer(req.body)) {
+      await fs.promises.writeFile(filePath, req.body);
+    } else if (req.raw && typeof req.raw.pipe === 'function' && (!req.body || (typeof req.body === 'object' && Object.keys(req.body).length === 0 && !Buffer.isBuffer(req.body)))) {
+      await new Promise<void>((resolve, reject) => {
+        const ws = fs.createWriteStream(filePath);
+        req.raw.pipe(ws);
+        ws.on('finish', () => resolve());
+        ws.on('error', reject);
+      });
+    } else {
+      await fs.promises.writeFile(filePath, Buffer.from(req.body || ''));
+    }
+    return { success: true };
+  }
+
+  @Get('files/*')
+  async getFile(@Req() req: any, @Res() reply: any) {
+    const rawKey = req.params?.['*'] || req.url.split('?')[0].replace(/^\/api\/media\/files\/?/, '');
+    const filePath = getSafeFilePath(rawKey);
+
+    if (!fs.existsSync(filePath)) {
+      throw new NotFoundException('File not found');
+    }
+
+    const ext = path.extname(filePath).toLowerCase();
+    const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+    reply.type(contentType);
+    reply.header('Cache-Control', 'public, max-age=86400');
+    reply.header('Access-Control-Allow-Origin', '*');
+    const buffer = await fs.promises.readFile(filePath);
+    return reply.send(buffer);
   }
 }

@@ -4,6 +4,7 @@ export interface User {
   username: string;
   name?: string;
   avatarUrl?: string;
+  about?: string;
   preferredLanguage?: string;
 }
 
@@ -18,6 +19,7 @@ export interface Message {
   conversationId: string;
   senderId: string;
   senderName: string;
+  senderAvatar?: string;
   content: string;
   mediaType: 'text' | 'image' | 'video' | 'audio' | 'file';
   mediaUrl?: string;

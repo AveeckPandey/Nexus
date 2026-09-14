@@ -25,10 +25,16 @@ export class MediaService {
     if (!ALLOWED_TYPES.has(fileType)) {
       throw new BadRequestException(`Unsupported file type: ${fileType}`);
     }
-    if (!hasAwsCredentials()) {
-      throw new BadRequestException('Media storage not configured on server');
-    }    const ext = fileExtension.replace(/^\./, '').slice(0, 10) || 'bin';
+    const ext = fileExtension.replace(/^\./, '').slice(0, 10) || 'bin';
     const key = `uploads/${userId}/${uuidv4()}.${ext}`;
+    if (!hasAwsCredentials()) {
+      const base = process.env.API_URL || 'http://localhost:8080';
+      return {
+        uploadUrl: `${base}/api/media/upload/${key}`,
+        mediaUrl: `${base}/api/media/files/${key}`,
+        key,
+      };
+    }
     const uploadUrl = await getSignedUrl(
       s3Client,
       new PutObjectCommand({

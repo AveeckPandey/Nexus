@@ -6,6 +6,7 @@ import { ChatModule } from './modules/chat/chat.module';
 import { GhostModule } from './modules/ghost/ghost.module';
 import { WebRtcModule } from './modules/webrtc/webrtc.module';
 import { MediaModule } from './modules/media/media.module';
+import { StoriesModule } from './modules/stories/stories.module';
 import { AiModule } from './modules/ai/ai.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { AppController } from './app.controller';
@@ -19,6 +20,7 @@ import { AppController } from './app.controller';
     GhostModule,
     WebRtcModule,
     MediaModule,
+    StoriesModule,
     AiModule,
     NotificationsModule,
   ],

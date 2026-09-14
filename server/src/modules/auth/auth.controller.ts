@@ -5,6 +5,7 @@ import {
   Patch,
   Param,
   Body,
+  Query,
   UseGuards,
   BadRequestException,
 } from '@nestjs/common';import { AuthService } from './auth.service';
@@ -26,11 +27,16 @@ export class AuthController {
   }
 
   @Post('signup')
-  signup(@Body() b: { email?: string; password?: string; name?: string }) {
+  signup(@Body() b: { email?: string; password?: string; name?: string; username?: string }) {
     if (!b.email || !EMAIL_RE.test(b.email)) throw new BadRequestException('Valid email required');
     if (!b.password || b.password.length < 8)
       throw new BadRequestException('Password must be 8+ characters');
-    return this.auth.signUp({ email: b.email.toLowerCase(), password: b.password, name: b.name });
+    return this.auth.signUp({
+      email: b.email.toLowerCase(),
+      password: b.password,
+      name: b.name,
+      username: b.username,
+    });
   }
 
   @Post('confirm')
@@ -69,6 +75,46 @@ export class AuthController {
     return { success: true, profile: profile || u };
   }
 
+  /**
+   * Web-native directory search (no phonebook): username / name / email.
+   * Authenticated-only, capped at 10 public entries (no emails leaked
+   * beyond exact-email matches).
+   */
+  @Get('search')
+  @UseGuards(CognitoAuthGuard)
+  async search(@CurrentUser() u: AuthenticatedUser, @Query('q') q?: string) {
+    if (!q || !q.trim()) throw new BadRequestException('Search query required');
+    if (q.trim().length > 64) throw new BadRequestException('Search query too long');
+    const users = await this.auth.searchUsers(q, u.userId, 10);
+    return { success: true, users };
+  }
+
+  /**
+   * Resolve a personal invite code (username, userId, or email) to the
+   * public entry needed to open an encrypted chat. Powers
+   * nexus.app/invite?u=<code> deep links.
+   */
+  @Get('resolve/:code')
+  @UseGuards(CognitoAuthGuard)
+  async resolve(@Param('code') code: string) {
+    if (!code || !code.trim()) throw new BadRequestException('Invite code required');
+    const profile = await this.auth.resolveInviteCode(code.trim().slice(0, 128));
+    if (!profile) throw new BadRequestException('No user found for this invite link.');
+    return { success: true, user: this.auth.toPublicEntry(profile) };
+  }
+
+  /** Personal invite card for the one-click share link + QR code. */
+  @Get('invite/me')
+  @UseGuards(CognitoAuthGuard)
+  async inviteMe(@CurrentUser() u: AuthenticatedUser) {
+    const profile = await this.auth.getProfile(u.userId);
+    const username = profile?.username || u.username;
+    return {
+      success: true,
+      invite: { userId: u.userId, username, name: profile?.name || u.name },
+    };
+  }
+
   @Get('users/:id')
   @UseGuards(CognitoAuthGuard)
   async publicEntry(@Param('id') id: string) {
@@ -81,9 +127,9 @@ export class AuthController {
   @UseGuards(CognitoAuthGuard)
   async profile(
     @CurrentUser() u: AuthenticatedUser,
-    @Body() b: { language?: string; name?: string; x25519PublicKey?: string },
+    @Body() b: { language?: string; name?: string; username?: string; x25519PublicKey?: string; avatarUrl?: string; about?: string },
   ) {
-    if (!b.language && !b.name && !b.x25519PublicKey) {
+    if (!b.language && !b.name && !b.x25519PublicKey && !b.username && !b.avatarUrl && b.about === undefined) {
       throw new BadRequestException('Nothing to update');
     }
     await this.auth.updateProfile(u.userId, b);

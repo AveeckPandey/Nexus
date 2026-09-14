@@ -20,6 +20,15 @@ const config: Config = {
           checkGray: '#A79FC4',
         },
       },
+      keyframes: {
+        'typing-bounce': {
+          '0%, 60%, 100%': { transform: 'translateY(0)', opacity: '0.5' },
+          '30%': { transform: 'translateY(-4px)', opacity: '1' },
+        },
+      },
+      animation: {
+        'typing-bounce': 'typing-bounce 1.2s ease-in-out infinite',
+      },
     },
   },
   darkMode: 'class',

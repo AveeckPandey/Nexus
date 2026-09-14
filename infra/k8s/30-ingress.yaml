@@ -1,0 +1,42 @@
+# Internet-facing ALB (requires the AWS Load Balancer Controller installed
+# in the cluster). Extended idle timeout + sticky sessions keep Socket.IO
+# long-poll upgrade and websocket connections alive across nodes.
+# Host must match var.app_domain and DNS pointing at the ALB.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nexus-ingress
+  namespace: nexus
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    # Critical for persistent WebSockets:
+    alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=3600
+    alb.ingress.kubernetes.io/target-group-attributes: stickiness.enabled=true,stickiness.lb_cookie.duration_seconds=86400,load_balancing.algorithm.type=least_outstanding_requests
+spec:
+  rules:
+    - host: nexus.yourdomain.com
+      http:
+        paths:
+          - path: /socket.io
+            pathType: Prefix
+            backend:
+              service:
+                name: nexus-server-service
+                port:
+                  number: 8080
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: nexus-server-service
+                port:
+                  number: 8080
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: nexus-web-service
+                port:
+                  number: 3000

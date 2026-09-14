@@ -33,7 +33,7 @@ export class WebRtcService {
       callType,
       recipientIds,
       status: 'ringing',
-      participants: new Set(),
+      participants: new Set([initiatorId]),
       createdAt: new Date().toISOString(),
     };
     this.calls.set(callId, session);
