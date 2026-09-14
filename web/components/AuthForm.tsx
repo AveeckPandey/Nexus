@@ -60,8 +60,6 @@ export function AuthForm() {
   const [show, setShow] = useState(false);
   const [remember, setRemember] = useState(true);
   const [code, setCode] = useState('');
-  const [googleCred, setGoogleCred] = useState('');
-  const [showGoogleToken, setShowGoogleToken] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -149,23 +147,6 @@ export function AuthForm() {
     }
   };
 
-  const google = async () => {
-    if (!googleCred.trim()) {
-      setError('Paste a Google ID token, or sign in via your Cognito Hosted UI.');
-      return;
-    }
-    setError(null);
-    setBusy(true);
-    try {
-      const r = await authApi.google(googleCred.trim());
-      login(r.user, r.idToken);
-      ensureIdentityPublished().catch(() => {});
-    } catch (e: any) {
-      setError(friendly(e, 'Google sign-in failed'));
-    } finally {
-      setBusy(false);
-    }
-  };
 
   const forgot = async () => {
     if (!EMAIL_RE.test(email.trim())) {
@@ -457,45 +438,16 @@ export function AuthForm() {
 
                   <button
                     onClick={() => {
-                      if (showGoogleToken && googleCred.trim()) { google(); }
-                      else setShowGoogleToken((v) => !v);
-                    }}
-                    disabled={busy}
-                    className="w-full rounded-xl border border-white/[0.12] bg-white/[0.03] backdrop-blur-md px-4 py-3.5 font-semibold text-[14.5px] text-[#E8E4FA] hover:bg-white/[0.06] active:scale-[0.99] transition flex items-center justify-center gap-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]"
-                  >
-                    <svg width="19" height="19" viewBox="0 0 24 24"><path fill="#FFC107" d="M21.35 11.1H12v2.9h5.35c-.5 2.4-2.55 3.5-5.35 3.5a5.9 5.9 0 0 1 0-11.8c1.5 0 2.85.55 3.9 1.45l2.1-2.1A8.9 8.9 0 0 0 12 2a9 9 0 0 0 0 18c5.4 0 9-3.8 9-9.2 0-.25-.05-.5-.1-.75l-.55-.95Z"/><path fill="#FF3D00" d="M3.15 7.05 5.9 9.05c.8-2 2.7-3.25 4.7-3.5l-2-2.05C6.45 4.1 4.3 5.4 3.15 7.05Z" opacity=".9"/><path fill="#4CAF50" d="M12 20c1.65 0 3.1-.6 4.2-1.55l-2.6-2.1c-.7.5-1.6.75-2.6.65l-.85 2.9c.3.05.55.1.85.1Z"/><path fill="#1976D2" d="M3 12c0-1 .2-2 .55-2.95L1.5 7C.55 8.85 0 10.35 0 12s.55 3.15 1.5 5.05l2.05-2C3.2 14 3 13 3 12Z"/></svg>
-                    Continue with Google
-                  </button>
-
-                  {showGoogleToken && (
-                    <div className="rounded-xl border border-white/10 bg-black/20 backdrop-blur-md p-3 space-y-2.5">
-                      <input
-                        value={googleCred}
-                        onChange={(e) => setGoogleCred(e.target.value)}
-                        placeholder="Paste Google ID token (eyJhbGciOi...)"
-                        spellCheck={false}
-                        className="w-full rounded-lg border border-white/10 glass-input px-3 py-2.5 text-[12.5px] font-mono placeholder:font-sans placeholder:text-[#6F668F] outline-none focus:border-[#8B5CF6]/60 transition"
-                      />
-                      <button onClick={google} disabled={busy || !googleCred.trim()} className="w-full rounded-lg bg-white/10 hover:bg-white/15 disabled:opacity-40 px-3 py-2.5 text-[13px] font-semibold transition">
-                        Verify Google token
-                      </button>
-                      <p className="text-[11px] text-[#7E76A0] text-center">Or sign in via your Cognito Hosted UI, then paste the ID token here.</p>
-                    </div>
-                  )}
-
-                  <button
-                    onClick={() => {
-                      const cid = process.env.NEXT_PUBLIC_GITHUB_CLIENT_ID;
-                      if (!cid) { setError('GitHub login is not configured in this build.'); return; }
+                      const cid = process.env.NEXT_PUBLIC_GITHUB_CLIENT_ID || 'Ov23liE4xyqjejKLJwJb';
                       const redirect = `${window.location.origin}/auth/github/callback`;
                       window.location.href =
                         `https://github.com/login/oauth/authorize?client_id=${encodeURIComponent(cid)}` +
                         `&redirect_uri=${encodeURIComponent(redirect)}&scope=user:email`;
                     }}
                     disabled={busy}
-                    className="w-full rounded-xl border border-white/[0.12] bg-white/[0.03] backdrop-blur-md px-4 py-3.5 font-semibold text-[14.5px] text-[#E8E4FA] hover:bg-white/[0.06] active:scale-[0.99] transition flex items-center justify-center gap-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]"
+                    className="w-full rounded-xl border border-white/[0.14] bg-white/[0.04] hover:bg-white/[0.08] active:scale-[0.99] backdrop-blur-md px-4 py-3.5 font-semibold text-[14.5px] text-white transition flex items-center justify-center gap-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.15)]"
                   >
-                    <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56 0-.27-.01-1.17-.02-2.12-3.2.7-3.88-1.36-3.88-1.36-.52-1.33-1.28-1.68-1.28-1.68-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.19 1.76 1.19 1.03 1.76 2.7 1.25 3.36.96.1-.75.4-1.25.72-1.54-2.55-.29-5.23-1.28-5.23-5.68 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11.1 11.1 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.41-2.69 5.38-5.25 5.67.41.35.77 1.05.77 2.12 0 1.53-.01 2.76-.01 3.14 0 .31.21.68.8.56A10.52 10.52 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z"/></svg>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56 0-.27-.01-1.17-.02-2.12-3.2.7-3.88-1.36-3.88-1.36-.52-1.33-1.28-1.68-1.28-1.68-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.19 1.76 1.19 1.03 1.76 2.7 1.25 3.36.96.1-.75.4-1.25.72-1.54-2.55-.29-5.23-1.28-5.23-5.68 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11.1 11.1 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.41-2.69 5.38-5.25 5.67.41.35.77 1.05.77 2.12 0 1.53-.01 2.76-.01 3.14 0 .31.21.68.8.56A10.52 10.52 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z"/></svg>
                     Continue with GitHub
                   </button>
 

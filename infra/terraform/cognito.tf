@@ -29,6 +29,10 @@ resource "aws_cognito_user_pool" "nexus" {
     allow_admin_create_user_only = false
   }
 
+  lambda_config {
+    post_confirmation = "arn:aws:lambda:us-east-1:758388043025:function:nexus-post-confirmation-welcome"
+  }
+
   schema {
     name                = "email"
     attribute_data_type = "String"
