@@ -38,12 +38,11 @@ function friendly(err: any, fallback: string): string {
 function NexusMark() {
   return (
     <span className="flex items-center gap-2.5 select-none">
-      <span className="grid place-items-center w-9 h-9 rounded-xl bg-gradient-to-br from-[#8B5CF6] to-[#5B21B6] shadow-[0_0_24px_rgba(139,92,246,0.55)]">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
-          <path d="M6 4.5v11.2c0 1.6 1.76 2.58 3.12 1.73l7.9-4.95c1.34-.84 3.02.12 3.02 1.73v.29c0 .83-.67 1.5-1.5 1.5H6.5A2 2 0 0 1 4.5 14V6c0-.83.67-1.5 1.5-1.5Z" fill="white" opacity=".95" />
-          <path d="M18 4.5v11c0 .83-.67 1.5-1.5 1.5h-.4L7 11.6V6c0-.83.67-1.5 1.5-1.5H18Z" fill="white" opacity=".55" />
-        </svg>
-      </span>
+      <img
+        src="/nexus-alien.png"
+        alt="Nexus"
+        className="w-10 h-10 object-contain drop-shadow-[0_0_20px_rgba(139,92,246,0.7)]"
+      />
       <span className="text-[22px] font-extrabold tracking-tight text-white">Nexus</span>
     </span>
   );

@@ -1099,7 +1099,7 @@ export function ChatWindow({ conversationId, onCall }: { conversationId: string;
         onScroll={closeMenu}
         style={{
           backgroundImage:
-            'linear-gradient(rgba(20, 9, 43, 0.88), rgba(20, 9, 43, 0.88)), url(/assets/y10n_fpni_211014.jpg)',
+            'linear-gradient(rgba(20, 9, 43, 0.88), rgba(20, 9, 43, 0.88)), url(/doodle-bg.jpg)',
           backgroundSize: 'cover',
           backgroundPosition: 'center',
         }}

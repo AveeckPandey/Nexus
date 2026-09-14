@@ -70,9 +70,9 @@ export function AiChatPanel() {
       <div className="flex items-center gap-3 px-4 py-2.5 bg-whatsapp-panel border-b border-white/10">
         <Avatar
           name="Nexus AI"
-          src="/assets/alien-svgrepo-com.svg"
+          src="/nexus-alien.png"
           size="sm"
-          className="shrink-0 bg-white [&_img]:p-1"
+          className="shrink-0 bg-transparent"
         />
         <div className="flex-1 min-w-0">
           <span className="flex items-center gap-1.5">
@@ -92,7 +92,7 @@ export function AiChatPanel() {
         className="flex-1 overflow-y-auto p-4 space-y-2"
         style={{
           backgroundImage:
-            'linear-gradient(rgba(20, 9, 43, 0.88), rgba(20, 9, 43, 0.88)), url(/assets/y10n_fpni_211014.jpg)',
+            'linear-gradient(rgba(20, 9, 43, 0.88), rgba(20, 9, 43, 0.88)), url(/doodle-bg.jpg)',
           backgroundSize: 'cover',
           backgroundPosition: 'center',
         }}
@@ -108,7 +108,12 @@ export function AiChatPanel() {
               </div>
             </div>
           ) : (
-            <div key={m.id} className="flex justify-start mb-2">
+            <div key={m.id} className="flex justify-start items-end gap-2 mb-2">
+              <img
+                src="/nexus-alien.png"
+                alt="Nexus AI"
+                className="w-6 h-6 rounded-full object-contain shrink-0 mb-1"
+              />
               <div className="max-w-[85%] rounded-2xl rounded-bl-sm px-3 py-2 text-sm shadow-md bg-gradient-to-br from-[#0c1a24] to-[#1b1226] border border-cyan-500/40 text-cyan-50">
                 <SummaryBody text={m.text} />
                 <p className="text-[10px] opacity-60 text-right mt-1">
