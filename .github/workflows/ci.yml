@@ -27,7 +27,7 @@ jobs:
         run: npm --prefix server ci || npm --prefix server install
 
       - name: Install Web Dependencies
-        run: npm --prefix web ci || npm --prefix web install
+        run: npm --prefix web ci --legacy-peer-deps || npm --prefix web install --legacy-peer-deps
 
       - name: Run Stage 1 - Security Gates (Zero-Knowledge, IDOR, XSS, Memory Leak)
         run: npm run test:security
@@ -56,7 +56,7 @@ jobs:
         run: |
           npm ci || npm install
           npm --prefix server ci || npm --prefix server install
-          npm --prefix web ci || npm --prefix web install
+          npm --prefix web ci --legacy-peer-deps || npm --prefix web install --legacy-peer-deps
 
       - name: Build Backend Server (NestJS + Fastify)
         run: npm --prefix server run build
