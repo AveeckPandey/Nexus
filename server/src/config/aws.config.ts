@@ -49,7 +49,7 @@ export const AWS_CONFIG = {
   cognitoClientSecret: process.env.COGNITO_CLIENT_SECRET || '',
   googleClientId: process.env.GOOGLE_CLIENT_ID || '',
   cloudfrontDomain: process.env.CLOUDFRONT_DOMAIN || '',
-  bedrockModelId: process.env.BEDROCK_MODEL_ID || 'amazon.nova-micro-v1:0',
+  bedrockModelId: process.env.BEDROCK_MODEL_ID || 'amazon.nova-pro-v1:0',
 };
 
 export function hasAwsCredentials(): boolean {

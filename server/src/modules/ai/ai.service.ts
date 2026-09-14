@@ -140,8 +140,17 @@ export class AiService {
       return `Hey ${senderName}! I'm Nexus AI. Ask me anything, or ask me to summarize, translate, or format notes.`;
     }
 
-    const systemPrompt =
-      'You are Nexus AI, a helpful, ultra-fast assistant inside Nexus secure messenger. Give concise, direct answers.';
+    const now = new Date();
+    const currentDate = now.toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+    const systemPrompt = `You are Nexus AI, an intelligent, ultra-fast assistant inside Nexus secure messenger.
+Current Date: ${currentDate}. Current Year: ${now.getFullYear()}.
+Current World Context: Donald Trump is the 47th President of the United States (inaugurated January 20, 2025).
+Always provide accurate, up-to-date, and concise answers with clean markdown formatting.`;
 
     // 1. Try Amazon Bedrock
     const bedrockReply = await this.invokeBedrock(systemPrompt, cleanQuery, 400);

@@ -108,12 +108,7 @@ export function AiChatPanel() {
               </div>
             </div>
           ) : (
-            <div key={m.id} className="flex justify-start items-end gap-2 mb-2">
-              <img
-                src="/nexus-alien.png"
-                alt="Nexus AI"
-                className="w-6 h-6 rounded-full object-contain shrink-0 mb-1"
-              />
+            <div key={m.id} className="flex justify-start mb-2">
               <div className="max-w-[85%] rounded-2xl rounded-bl-sm px-3 py-2 text-sm shadow-md bg-gradient-to-br from-[#0c1a24] to-[#1b1226] border border-cyan-500/40 text-cyan-50">
                 <SummaryBody text={m.text} />
                 <p className="text-[10px] opacity-60 text-right mt-1">

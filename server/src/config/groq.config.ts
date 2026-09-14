@@ -10,7 +10,7 @@ export const GROQ_CONFIG = {
     return process.env.GROQ_API_KEY || '';
   },
   get model() {
-    return process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+    return process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
   },
 };
 
