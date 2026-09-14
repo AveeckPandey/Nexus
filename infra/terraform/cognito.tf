@@ -33,6 +33,13 @@ resource "aws_cognito_user_pool" "nexus" {
     post_confirmation = "arn:aws:lambda:us-east-1:758388043025:function:nexus-post-confirmation-welcome"
   }
 
+  email_configuration {
+    email_sending_account  = "DEVELOPER"
+    from_email_address     = "Nexus <hello@buildwithaveeck.com>"
+    reply_to_email_address = "hello@buildwithaveeck.com"
+    source_arn             = "arn:aws:ses:us-east-1:758388043025:identity/buildwithaveeck.com"
+  }
+
   schema {
     name                = "email"
     attribute_data_type = "String"
