@@ -84,20 +84,54 @@ export class AiService {
 
   async translate(text: string, targetLang: string, sourceLang = 'auto'): Promise<string> {
     if (!text || !targetLang) return text;
-    if (!hasAwsCredentials()) return text;
-    try {
-      const r = await translateClient.send(
-        new TranslateTextCommand({
-          Text: text,
-          SourceLanguageCode: sourceLang,
-          TargetLanguageCode: targetLang,
-        }),
-      );
-      return r.TranslatedText || text;
-    } catch (err: any) {
-      this.logger.warn(`Translate failed: ${err.message}`);
-      return text;
+
+    // 1. Try Amazon Translate (if subscribed/active on the AWS account)
+    if (hasAwsCredentials()) {
+      try {
+        const r = await translateClient.send(
+          new TranslateTextCommand({
+            Text: text,
+            SourceLanguageCode: sourceLang,
+            TargetLanguageCode: targetLang,
+          }),
+        );
+        if (r.TranslatedText) return r.TranslatedText;
+      } catch (err: any) {
+        this.logger.warn(`Amazon Translate unavailable (${err.name || err.message}), falling back to Bedrock.`);
+      }
     }
+
+    // 2. Fall back to Amazon Bedrock (Nova Micro)
+    const bedrockResult = await this.invokeBedrock(
+      `You are an accurate, fast language translator. Translate user text into the target language code or name "${targetLang}". Output ONLY the direct translated text. Do not wrap in quotes. Do not include notes or explanations.`,
+      text,
+      300,
+    );
+    if (bedrockResult?.trim()) return bedrockResult.trim();
+
+    // 3. Fall back to Groq Cloud (Llama 3.3 70B)
+    if (GROQ_CONFIG.apiKey) {
+      try {
+        const r = await groqClient.chat.completions.create({
+          messages: [
+            {
+              role: 'system',
+              content: `You are an accurate, fast language translator. Translate user text into the target language "${targetLang}". Output ONLY the direct translated text. Do not wrap in quotes. Do not include notes or explanations.`,
+            },
+            { role: 'user', content: text },
+          ],
+          model: GROQ_CONFIG.model,
+          temperature: 0.2,
+          max_tokens: 300,
+        });
+        const groqResult = r.choices[0]?.message?.content?.trim();
+        if (groqResult) return groqResult;
+      } catch (err: any) {
+        this.logger.warn(`Groq translation fallback failed: ${err.message}`);
+      }
+    }
+
+    return text;
   }
 
   async chatReply(query: string, senderName: string): Promise<string> {
