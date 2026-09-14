@@ -127,6 +127,29 @@ describe('features-cap: WebRTC 5-peer limit, AI Bot, Transcribe & Ghost Chat', (
       const transcript = await ai.transcribe('data:audio/webm;base64,GkXfo59ChoEBQveBAULygQ8=');
       expect(transcript).toContain('transcription');
     });
+
+    test('stripEchoedContext removes parroted Current Context blocks', async () => {
+      const { stripEchoedContext } = await import(
+        '../../server/src/modules/ai/ai.service'
+      );
+      const echoed =
+        'Hello! How can I assist you today?\n---\nCurrent Context:\n' +
+        '• Date: Monday, September 14, 2026\n' +
+        '• President of the United States: Donald Trump (47th President, inaugurated January 20, 2025)';
+      const clean = stripEchoedContext(echoed);
+      expect(clean).toContain('How can I assist you today?');
+      expect(clean).not.toMatch(/current context/i);
+      expect(clean).not.toContain('47th President');
+      expect(clean).not.toContain('---');
+    });
+
+    test('stripEchoedContext keeps genuine answers without the heading', async () => {
+      const { stripEchoedContext } = await import(
+        '../../server/src/modules/ai/ai.service'
+      );
+      const genuine = 'The 47th President of the United States is Donald Trump.';
+      expect(stripEchoedContext(genuine)).toBe(genuine);
+    });
   });
 
   describe('Anonymous Ghost Chat Joining', () => {
