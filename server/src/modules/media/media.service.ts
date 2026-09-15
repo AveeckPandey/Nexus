@@ -19,13 +19,21 @@ const ALLOWED_TYPES = new Set([
   'application/pdf',
 ]);
 
+const BLOCKED_EXTENSIONS = new Set([
+  'exe', 'bat', 'cmd', 'sh', 'bash', 'ps1', 'dll', 'so', 'msi', 'com', 'scr', 'vbs', 'jar', 'apk'
+]);
+
 @Injectable()
 export class MediaService {
   async presignedPut(userId: string, fileType: string, fileExtension: string) {
+    const cleanExt = fileExtension.replace(/^\./, '').toLowerCase().slice(0, 10) || 'bin';
+    if (BLOCKED_EXTENSIONS.has(cleanExt)) {
+      throw new BadRequestException(`Executable or dangerous file format forbidden: .${cleanExt}`);
+    }
     if (!ALLOWED_TYPES.has(fileType)) {
       throw new BadRequestException(`Unsupported file type: ${fileType}`);
     }
-    const ext = fileExtension.replace(/^\./, '').slice(0, 10) || 'bin';
+    const ext = cleanExt;
     const key = `uploads/${userId}/${uuidv4()}.${ext}`;
     if (!hasAwsCredentials()) {
       const base = process.env.API_URL || 'http://localhost:8080';

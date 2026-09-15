@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 import { Button, Spinner, Avatar } from '@heroui/react';
 import { Theme } from 'emoji-picker-react';
 import { chatApi, aiApi } from '@/lib/api';
-import { getSocket } from '@/lib/socket';
+import { getSocket, emitWithOfflineQueue } from '@/lib/socket';
 import { encryptText, decryptText, ensureConversationKey, exportConversationKey } from '@/lib/e2ee';
 import { fetchAndImportKey, sealKeysForConversation } from '@/lib/keyx';
 import { useChatStore } from '@/store/chat';
@@ -728,9 +728,9 @@ export function ChatWindow({ conversationId, onCall }: { conversationId: string;
           isEncrypted: true, nonce: enc.nonce, encVersion: enc.encVersion,
         };
         addMessage(conversationId, optimistic);
-        socket?.emit('send_message', {
+        emitWithOfflineQueue('send_message', {
           conversationId, senderName: base.senderName, senderAvatar: user.avatarUrl, content: enc.ciphertext, mediaType: 'text',
-          tempId, replyTo: base.replyTo, isEncrypted: true, nonce: enc.nonce, encVersion: enc.encVersion,
+          tempId, clientMessageId: tempId, replyTo: base.replyTo, isEncrypted: true, nonce: enc.nonce, encVersion: enc.encVersion,
         }, ack(optimistic));
       } catch {
         setNotice('Encryption failed — message not sent.');
@@ -740,9 +740,9 @@ export function ChatWindow({ conversationId, onCall }: { conversationId: string;
     } else {
       const optimistic: Message = { ...base, content: text, mediaType: opts?.mediaType || 'text' };
       addMessage(conversationId, optimistic);
-      socket?.emit('send_message', {
+      emitWithOfflineQueue('send_message', {
         conversationId, senderName: base.senderName, senderAvatar: user.avatarUrl, content: text,
-        tempId, mediaType: opts?.mediaType || 'text', mediaUrl: opts?.mediaUrl, replyTo: base.replyTo,
+        tempId, clientMessageId: tempId, mediaType: opts?.mediaType || 'text', mediaUrl: opts?.mediaUrl, replyTo: base.replyTo,
       }, ack(optimistic));
     }
     setReplyTo(null);

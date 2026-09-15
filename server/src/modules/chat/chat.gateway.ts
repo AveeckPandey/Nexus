@@ -97,6 +97,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       senderAvatar?: string;
       content: string;
       tempId?: string;
+      clientMessageId?: string;
       mediaType?: 'text' | 'image' | 'video' | 'audio' | 'file';
       mediaUrl?: string;
       replyTo?: any;
@@ -111,18 +112,41 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return { error: 'Forbidden' };
     }
 
-    // 1. Sliding window per-socket message rate limit (max 15 msg/sec)
+    const clientMsgId = d.clientMessageId || d.tempId;
+
+    // 1. Sliding window per-socket message rate limit (max 15 msg/3sec -> 429)
     const nowTs = Date.now();
     const msgCount = (c.data.msgCount || 0) + 1;
     const windowStart = c.data.windowStart || nowTs;
-    if (nowTs - windowStart < 1000) {
+    if (nowTs - windowStart < 3000) {
       if (msgCount > 15) {
-        return { status: 'rate_limited', message: 'Too many messages sent. Please slow down.' };
+        c.emit('rate_limited', {
+          status: 'rate_limited',
+          statusCode: 429,
+          retryAfter: 3,
+          message: 'Rate limit exceeded: maximum 15 messages per 3 seconds. Please slow down.',
+        });
+        return {
+          status: 'rate_limited',
+          statusCode: 429,
+          retryAfter: 3,
+          message: 'Rate limit exceeded: maximum 15 messages per 3 seconds. Please slow down.',
+        };
       }
       c.data.msgCount = msgCount;
     } else {
       c.data.windowStart = nowTs;
       c.data.msgCount = 1;
+    }
+
+    // 2. Idempotent Deduplication (Reliability on flaky networks / airplane mode)
+    if (clientMsgId && this.redis) {
+      const idempKey = `idemp:msg:${senderId}:${clientMsgId}`;
+      const existingMsgId = await this.redis.get(idempKey);
+      if (existingMsgId) {
+        this.logger.debug(`Idempotent hit for message ${clientMsgId} -> ${existingMsgId}`);
+        return { status: 'sent', messageId: existingMsgId, tempId: d.tempId, clientMessageId: clientMsgId, deduplicated: true };
+      }
     }
 
     const isFromAiOrBot = senderId === 'nexus-ai' || d.senderName === 'Nexus AI' || senderId.startsWith('bot_') || Boolean(d.isBot || d.senderAvatar?.includes('alien'));
@@ -138,6 +162,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       { isEncrypted: d.isEncrypted, nonce: d.nonce, encVersion: d.encVersion },
       d.senderAvatar,
     );
+
+    // Cache idempotency key for 60 seconds
+    if (clientMsgId && this.redis) {
+      await this.redis.set(`idemp:msg:${senderId}:${clientMsgId}`, msg.id, 'EX', 60);
+    }
+
     this.server.to(d.conversationId).emit('new_message', msg);
 
     // AI Companion mention check (@nexus or @ai) - Redis distributed rate limiter

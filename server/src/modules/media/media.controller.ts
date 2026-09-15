@@ -69,18 +69,41 @@ export class MediaController {
     const filePath = getSafeFilePath(rawKey);
     await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
 
+    let contentBuffer: Buffer;
     if (Buffer.isBuffer(req.body)) {
-      await fs.promises.writeFile(filePath, req.body);
+      contentBuffer = req.body;
     } else if (req.raw && typeof req.raw.pipe === 'function' && (!req.body || (typeof req.body === 'object' && Object.keys(req.body).length === 0 && !Buffer.isBuffer(req.body)))) {
+      const chunks: Buffer[] = [];
       await new Promise<void>((resolve, reject) => {
-        const ws = fs.createWriteStream(filePath);
-        req.raw.pipe(ws);
-        ws.on('finish', () => resolve());
-        ws.on('error', reject);
+        req.raw.on('data', (chunk: Buffer) => chunks.push(chunk));
+        req.raw.on('end', () => resolve());
+        req.raw.on('error', reject);
       });
+      contentBuffer = Buffer.concat(chunks);
     } else {
-      await fs.promises.writeFile(filePath, Buffer.from(req.body || ''));
+      contentBuffer = Buffer.from(req.body || '');
     }
+
+    // Security check 1: Disallow Windows MZ/PE executables (magic bytes 'MZ')
+    if (contentBuffer.length >= 2 && contentBuffer[0] === 0x4D && contentBuffer[1] === 0x5A) {
+      throw new BadRequestException('Executable files are forbidden.');
+    }
+
+    // Security check 2: Disallow Linux ELF binaries (magic bytes 0x7F 'ELF')
+    if (contentBuffer.length >= 4 && contentBuffer[0] === 0x7F && contentBuffer[1] === 0x45 && contentBuffer[2] === 0x4C && contentBuffer[3] === 0x46) {
+      throw new BadRequestException('Binary executable files are forbidden.');
+    }
+
+    // Security check 3: Sanitize SVG scripts / XSS injection
+    const ext = path.extname(filePath).toLowerCase();
+    if (ext === '.svg') {
+      const svgStr = contentBuffer.toString('utf8');
+      if (/<script|onload=|onerror=|onclick=/i.test(svgStr)) {
+        throw new BadRequestException('SVG files containing executable scripts or event handlers are forbidden.');
+      }
+    }
+
+    await fs.promises.writeFile(filePath, contentBuffer);
     return { success: true };
   }
 

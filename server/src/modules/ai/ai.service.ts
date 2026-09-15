@@ -172,6 +172,20 @@ export class AiService {
       return `Hey ${senderName}! I'm Nexus AI. Ask me anything, or ask me to summarize, translate, or format notes.`;
     }
 
+    // Prompt injection defense: reject jailbreaks and instructions exfiltration
+    const INJECTION_PATTERNS = [
+      /ignore\s+(all\s+)?(previous|prior|above)\s+(instructions|prompts|rules)/i,
+      /reveal\s+(your\s+)?(system\s+prompt|hidden\s+instructions|secret\s+key)/i,
+      /disregard\s+(all\s+)?(safety|security|rules)/i,
+      /leak\s+(the\s+)?(chat|conversation|system|prompt)/i,
+      /you\s+are\s+now\s+in\s+developer\s+mode/i,
+      /dan\s+mode/i,
+    ];
+
+    if (INJECTION_PATTERNS.some((re) => re.test(cleanQuery))) {
+      return "I cannot fulfill this request. Nexus AI operates within strict safety boundaries to preserve chat security.";
+    }
+
     const now = new Date();
     const currentDate = now.toLocaleDateString('en-US', {
       weekday: 'long',
