@@ -41,7 +41,12 @@ test.describe('webrtc calling', () => {
     await expect(modal).toBeVisible({ timeout: 15000 });
 
     const latency = await alice.evaluate(() => Date.now() - (window as any).__callInitiatedAt);
-    expect(latency).toBeLessThan(15000); // CI slack over the 500ms spec target
+    // Spec target is 500ms for incoming_call modal; CI allows 15s (headless + signaling).
+    // Fail only on CI budget, but surface spec breach in the log for perf tracking.
+    if (latency > 500) {
+      console.log(`[webrtc-perf] incoming_call modal took ${latency}ms (spec: <500ms, CI budget: <15000ms)`);
+    }
+    expect(latency).toBeLessThan(15000);
 
     await bob.getByRole('button', { name: /accept/i }).click();
 

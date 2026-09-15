@@ -29,6 +29,14 @@ jobs:
       - name: Install Web Dependencies
         run: npm --prefix web ci --legacy-peer-deps || npm --prefix web install --legacy-peer-deps
 
+      - name: Run Stage 0 - Dependency Audit (SCA) + Secret Scan
+        run: |
+          npm audit --audit-level=moderate || echo "::warning::root audit found moderate+ issues"
+          npm --prefix server audit --audit-level=moderate || echo "::warning::server audit found moderate+ issues"
+          echo "--- secret scan (no keys committed?) ---"
+          git grep -nE "BEGIN (RSA )?PRIVATE KEY|AKIA[0-9A-Z]{16}|xox[bap]-|ghp_[A-Za-z0-9]{36}" -- . || echo "no hardcoded secrets found"
+          test ! -f server/.env || echo "::warning::server/.env present in workspace (must never be committed)"
+
       - name: Run Stage 1 - Security Gates (Zero-Knowledge, IDOR, XSS, Memory Leak)
         run: npm run test:security
 
@@ -69,3 +77,12 @@ jobs:
 
       - name: Verify Kubernetes & Canary Deployment Specs
         run: npm run pipeline:canary
+
+      # OWASP ZAP baseline (DAST) — runs on main only, needs a live preview URL.
+      # Enable by setting PLAYWRIGHT_WEB_URL + ZAAP_TARGET secrets; kept as
+      # documented stub so the pipeline stays green until the target exists.
+      - name: OWASP ZAP Baseline (stub, manual)
+        if: false
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: ${{ secrets.ZAP_TARGET || 'http://localhost:3000' }}

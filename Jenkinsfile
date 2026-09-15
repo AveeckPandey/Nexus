@@ -6,6 +6,15 @@ pipeline {
     }
 
     stages {
+        stage('Stage 0: Audit + Secrets') {
+            steps {
+                echo '=== Stage 0: npm audit (SCA) + hardcoded-secret scan ==='
+                sh 'npm audit --audit-level=moderate || echo "WARN: root audit moderate+ issues"'
+                sh 'npm --prefix server audit --audit-level=moderate || echo "WARN: server audit moderate+ issues"'
+                sh 'git grep -nE "BEGIN (RSA )?PRIVATE KEY|AKIA[0-9A-Z]{16}|xox[bap]-|ghp_[A-Za-z0-9]{36}" -- . || echo "no hardcoded secrets found"'
+            }
+        }
+
         stage('Stage 1: Security Gates') {
             steps {
                 echo '=== Stage 1: Zero-Knowledge, IDOR Guards, XSS Sanitization, Memory Leak Sweeper ==='

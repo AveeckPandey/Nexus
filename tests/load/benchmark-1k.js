@@ -142,13 +142,22 @@ async function runBenchmark() {
   const avgLat = (latencies.reduce((a, b) => a + b, 0) / (latencies.length || 1)).toFixed(1);
   const p50 = latencies[Math.floor(latencies.length * 0.5)] || 0;
   const p95 = latencies[Math.floor(latencies.length * 0.95)] || 0;
+  const p99 = latencies[Math.floor(latencies.length * 0.99)] || 0;
   const maxLat = latencies[latencies.length - 1] || 0;
 
   console.log(`        ✓ Completed ${latencies.length} message roundtrips.`);
-  console.log(`        Avg Latency: ${avgLat}ms | p50: ${p50}ms | p95: ${p95}ms | Max: ${maxLat}ms\n`);
+  console.log(`        Avg Latency: ${avgLat}ms | p50: ${p50}ms | p95: ${p95}ms | p99: ${p99}ms | Max: ${maxLat}ms\n`);
 
-  // 5. Sustained Concurrency & Stability Window
+  // 5. Sustained Concurrency & Stability Window (+ generator event-loop probe)
+  // NOTE (industry gap): single benchmark_user token is shared by all sockets for
+  // speed. Per-user Cognito tokens (MULTI_USER=1) are the stricter enterprise check
+  // and belong in the 10k/50k distributed runs. This harness keeps single-token
+  // default for backward-compat and documents the limitation in the report.
   console.log('[05/05] Holding all 1,000 sockets connected for 8 seconds to verify stability...');
+  const probeStart = Date.now();
+  await new Promise((r) => setTimeout(r, 100));
+  const generatorLag = Date.now() - probeStart - 100;
+  console.log(`        Generator event-loop drift: ${generatorLag}ms (warn if >50ms: generator saturated, not server)`);
   await new Promise((r) => setTimeout(r, 8000));
 
   const stillConnected = sockets.filter((s) => s.connected).length;
@@ -171,6 +180,9 @@ async function runBenchmark() {
   console.log(`Connection Drops         : ${connectedCount - stillConnected}`);
   console.log(`Average Latency          : ${avgLat} ms`);
   console.log(`p95 Latency              : ${p95} ms (Target: < 50 ms)`);
+  console.log(`p99 Latency              : ${p99} ms (Target: < 100 ms)`);
+  console.log(`Generator Drift          : ${generatorLag} ms (Target: < 50 ms)`);
+  console.log(`Auth Model               : single benchmark_user token (see NOTE; strict mode: MULTI_USER=1)`);
   console.log(`Server Health Post-Test  : ${healthEnd.status.toUpperCase()} (Uptime: ${healthEnd.uptime.toFixed(1)}s)`);
   console.log('====================================================');
 

@@ -137,13 +137,21 @@ async function run10kBenchmark() {
   const avgLat = (latencies.reduce((a, b) => a + b, 0) / (latencies.length || 1)).toFixed(1);
   const p50 = latencies[Math.floor(latencies.length * 0.5)] || 0;
   const p95 = latencies[Math.floor(latencies.length * 0.95)] || 0;
+  const p99 = latencies[Math.floor(latencies.length * 0.99)] || 0;
   const maxLat = latencies[latencies.length - 1] || 0;
 
   console.log(`        ✓ Completed ${latencies.length} message roundtrips under 10,000 concurrent connections.`);
-  console.log(`        Avg Latency: ${avgLat}ms | p50: ${p50}ms | p95: ${p95}ms | Max: ${maxLat}ms\n`);
+  console.log(`        Avg Latency: ${avgLat}ms | p50: ${p50}ms | p95: ${p95}ms | p99: ${p99}ms | Max: ${maxLat}ms\n`);
 
   // 5. Sustained Concurrency & Stability Window (Hold all 10k sockets open)
+  // NOTE: single-token auth is a speed shortcut; strict enterprise mode uses per-user
+  // tokens across distributed workers (see benchmark-50k worker-runner). Generator
+  // drift below distinguishes generator saturation from server event-loop lag.
   console.log('[05/05] Holding all 10,000 sockets connected simultaneously for 10 seconds...');
+  const probeStart = Date.now();
+  await new Promise((r) => setTimeout(r, 100));
+  const generatorLag = Date.now() - probeStart - 100;
+  console.log(`        Generator event-loop drift: ${generatorLag}ms (warn if >50ms)`);
   await new Promise((r) => setTimeout(r, 10000));
 
   const stillConnected = sockets.filter((s) => s.connected).length;
@@ -166,6 +174,9 @@ async function run10kBenchmark() {
   console.log(`Connection Drops         : ${connectedCount - stillConnected}`);
   console.log(`Average Latency          : ${avgLat} ms`);
   console.log(`p95 Latency              : ${p95} ms (Target: < 80 ms)`);
+  console.log(`p99 Latency              : ${p99} ms (Target: < 150 ms)`);
+  console.log(`Generator Drift          : ${generatorLag} ms (Target: < 50 ms)`);
+  console.log(`Auth Model               : single benchmark_user token (strict: distributed per-user in 50k run)`);
   console.log(`Server Health Post-Test  : ${healthEnd.status.toUpperCase()} (Uptime: ${healthEnd.uptime.toFixed(1)}s)`);
   console.log('====================================================');
 

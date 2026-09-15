@@ -20,7 +20,7 @@ const ALLOWED_TYPES = new Set([
 ]);
 
 const BLOCKED_EXTENSIONS = new Set([
-  'exe', 'bat', 'cmd', 'sh', 'bash', 'ps1', 'dll', 'so', 'msi', 'com', 'scr', 'vbs', 'jar', 'apk'
+  'exe', 'bat', 'cmd', 'sh', 'bash', 'ps1', 'dll', 'so', 'msi', 'com', 'scr', 'vbs', 'jar', 'apk', 'dmg'
 ]);
 
 @Injectable()
