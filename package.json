@@ -21,7 +21,7 @@
     "benchmark:1k": "node tests/load/benchmark-1k.js",
     "benchmark:2pod": "node tests/load/benchmark-2pod.js",
     "benchmark:10k": "node tests/load/benchmark-10k.js",
-    "benchmark:50k": "node tests/load/benchmark-50k.js",
+    "benchmark:50k": "node tests/load/benchmark-cluster-50k.js",
     "makeittobreakit": "node tests/load/makeittobreakit.js",
     "pipeline": "node scripts/verify-pipeline.js",
     "pipeline:canary": "node scripts/verify-pipeline.js --canary-only"
