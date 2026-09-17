@@ -29,4 +29,10 @@ export class NotificationsController {
     await this.notifications.registerToken(u.userId, b.platform, b.pushToken, b.subscription);
     return { success: true };
   }
+
+  @Post('test')
+  @UseGuards(CognitoAuthGuard)
+  async testPush(@CurrentUser() u: AuthenticatedUser) {
+    return this.notifications.testPushNotification(u.userId);
+  }
 }

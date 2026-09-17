@@ -250,6 +250,48 @@ Answer accurately and concisely with clean markdown formatting. Never restate, q
       : `Hey ${senderName}, I'm in offline mode (no AI key on the server), so I can't answer "${cleanQuery}" yet. Ask the admin to set GROQ_API_KEY and restart — meanwhile try: help, status, or time.`;
   }
 
+  /** Hard cap: a voice note is never larger than this (also bounds Groq cost). */
+  private static readonly MAX_AUDIO_BYTES = 25 * 1024 * 1024;
+
+  /**
+   * Hosts the server may fetch audio from. Voice notes live on our own media
+   * pipeline (S3 bucket / CloudFront / API fallback) — never the open web.
+   * Anything else is rejected before any connection is made (SSRF guard).
+   */
+  private transcribeUrlAllowed(rawUrl: string): boolean {
+    let u: URL;
+    try {
+      u = new URL(rawUrl);
+    } catch {
+      return false;
+    }
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
+    if (u.username || u.password) return false;
+    const host = u.hostname.toLowerCase();
+    const allowed: string[] = [];
+    const pushHost = (v: string | undefined) => {
+      if (!v) return;
+      try {
+        // Accept full origins/URLs or bare hosts from config.
+        const h = v.includes('://') ? new URL(v).hostname : v.split('/')[0];
+        if (h) allowed.push(h.toLowerCase());
+      } catch {
+        /* ignore malformed config */
+      }
+    };
+    pushHost(AWS_CONFIG.s3Bucket ? `https://${AWS_CONFIG.s3Bucket}.s3.${AWS_CONFIG.region}.amazonaws.com` : undefined);
+    pushHost(AWS_CONFIG.s3Bucket ? `https://${AWS_CONFIG.s3Bucket}.s3.amazonaws.com` : undefined);
+    pushHost(AWS_CONFIG.cloudfrontDomain);
+    pushHost(process.env.API_URL);
+    pushHost(process.env.CLIENT_ORIGIN?.split(',')[0]);
+    if (allowed.includes(host)) return true;
+    // Localhost is only ever valid for development, never production.
+    if (process.env.NODE_ENV !== 'production' && (host === 'localhost' || host === '127.0.0.1' || host === '::1')) {
+      return true;
+    }
+    return false;
+  }
+
   async transcribe(audioBase64OrUrl: string): Promise<string> {
     if (!audioBase64OrUrl) return '';
 
@@ -257,14 +299,33 @@ Answer accurately and concisely with clean markdown formatting. Never restate, q
       try {
         let buffer: Buffer;
         if (audioBase64OrUrl.startsWith('http://') || audioBase64OrUrl.startsWith('https://')) {
-          const res = await fetch(audioBase64OrUrl);
+          if (!this.transcribeUrlAllowed(audioBase64OrUrl)) {
+            throw new Error('Audio URL host not allowlisted');
+          }
+          const res = await fetch(audioBase64OrUrl, {
+            signal: AbortSignal.timeout(15000),
+          });
+          if (!res.ok) throw new Error(`Audio download failed: ${res.status}`);
+          const contentType = res.headers.get('content-type') || '';
+          if (
+            contentType &&
+            !/^(audio\/|video\/(webm|mp4)|application\/octet-stream)/i.test(contentType)
+          ) {
+            throw new Error('Unsupported audio content type');
+          }
           const ab = await res.arrayBuffer();
+          if (ab.byteLength > AiService.MAX_AUDIO_BYTES) {
+            throw new Error('Audio payload too large');
+          }
           buffer = Buffer.from(ab);
         } else {
           const raw = audioBase64OrUrl.includes('base64,')
             ? audioBase64OrUrl.split('base64,')[1]
             : audioBase64OrUrl;
           buffer = Buffer.from(raw, 'base64');
+          if (buffer.length > AiService.MAX_AUDIO_BYTES) {
+            throw new Error('Audio payload too large');
+          }
         }
 
         const file = await toFile(buffer, 'voice_note.webm', { type: 'audio/webm' });

@@ -106,14 +106,14 @@ export function NetworkBanner() {
   return (
     <div
       role="alert"
-      className={`w-full px-4 py-2 text-xs font-medium flex items-center justify-between transition-colors z-50 shadow-md ${
+      className={`w-full px-4 py-2 text-xs font-medium flex items-center justify-between transition-colors z-50 shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] ${
         !isOnline
-          ? 'bg-rose-950/90 text-rose-200 border-b border-rose-500/40'
-          : 'bg-amber-950/90 text-amber-200 border-b border-amber-500/40'
+          ? 'bg-[#F5D6C2] text-[#7A3A00] border-b border-[#CC5500]/40'
+          : 'bg-[#E9EDF3] text-[#2F343D] border-b border-[#b8bcc9]/60'
       }`}
     >
       <div className="flex items-center gap-2">
-        <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${!isOnline ? 'bg-rose-400' : 'bg-amber-300 animate-pulse'}`} aria-hidden />
+        <span className={`w-2.5 h-2.5 rounded-full shrink-0 bg-[#CC5500] animate-pulse`} aria-hidden />
         <span>
           {!isOnline ? (
             <b>You are offline. Reconnecting to Nexus…</b>
@@ -126,7 +126,7 @@ export function NetworkBanner() {
       </div>
       <button
         onClick={() => setDismissed(true)}
-        className="opacity-70 hover:opacity-100 px-1.5 py-0.5 rounded hover:bg-white/10 ml-2 flex items-center"
+        className="ml-2 flex items-center justify-center w-6 h-6 rounded-full bg-[#E0E5EC] text-[#2F343D] shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] hover:bg-white/60 transition shrink-0"
         aria-label="Dismiss network warning"
       >
         <CloseIcon size={12} />

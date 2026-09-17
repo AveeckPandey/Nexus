@@ -1,8 +1,27 @@
 import { io, Socket } from 'socket.io-client';
+import { usePresenceStore } from '@/store/presence';
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:8080';
 
 let socket: Socket | null = null;
+let heartbeatTimer: any = null;
+
+function startHeartbeat(s: Socket) {
+  stopHeartbeat();
+  s.emit('presence:heartbeat');
+  heartbeatTimer = setInterval(() => {
+    if (s.connected) {
+      s.emit('presence:heartbeat');
+    }
+  }, 25000);
+}
+
+function stopHeartbeat() {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
+}
 
 interface QueuedMessage {
   event: string;
@@ -64,10 +83,22 @@ export function connectSocket(token: string): Socket {
 
   socket.on('connect', () => {
     flushQueue();
+    if (socket) startHeartbeat(socket);
   });
 
   socket.on('reconnect', () => {
     flushQueue();
+    if (socket) startHeartbeat(socket);
+  });
+
+  socket.on('disconnect', () => {
+    stopHeartbeat();
+  });
+
+  socket.on('presence:update', (data: { userId: string; status: 'online' | 'offline'; lastSeen?: string }) => {
+    if (data?.userId) {
+      usePresenceStore.getState().setPresence(data.userId, data.status, data.lastSeen);
+    }
   });
 
   return socket;
@@ -93,6 +124,7 @@ export function emitWithOfflineQueue(event: string, data: any, ack?: (res: any) 
 }
 
 export function disconnectSocket() {
+  stopHeartbeat();
   socket?.disconnect();
   socket = null;
   offlineQueue.length = 0;

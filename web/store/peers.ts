@@ -47,11 +47,18 @@ export const usePeerStore = create<PeerState>((set) => ({
         prev &&
         prev.avatarUrl === p.avatarUrl &&
         (prev.name || prev.username) === (p.name || p.username) &&
-        (prev.about || '') === (p.about || '')
+        (prev.about || '') === (p.about || '') &&
+        (prev.verified || false) === (p.verified || false)
       ) {
         return s;
       }
-      const peers = { ...s.peers, [p.userId]: { ...prev, ...p } };
+      // Verified directory entries always win: message-derived data must
+      // never overwrite them (senderName/senderAvatar are client-controlled
+      // and therefore spoofable).
+      const peers = {
+        ...s.peers,
+        [p.userId]: prev?.verified && !p.verified ? prev : { ...prev, ...p },
+      };
       persist(peers);
       return { peers };
     }),
@@ -69,11 +76,17 @@ export const usePeerStore = create<PeerState>((set) => ({
 export function learnPeerFromMessage(m: { senderId: string; senderName: string; senderAvatar?: string }) {
   if (!m.senderId || m.senderId === 'nexus-ai') return;
   if (!m.senderAvatar && !m.senderName) return;
+  // Unverified by construction: senderName/senderAvatar arrive inside a
+  // client-controlled payload. Stored as a display placeholder only — never
+  // an avatar (spoofed images must not render, even briefly), and never over
+  // a verified directory entry (see setPeer). ensurePeer() resolves the truth.
+  const existing = usePeerStore.getState().peers[m.senderId];
+  if (existing) return;
   usePeerStore.getState().setPeer({
     userId: m.senderId,
     username: m.senderName,
     name: m.senderName,
-    avatarUrl: m.senderAvatar,
+    avatarUrl: undefined,
   });
 }
 
@@ -84,7 +97,7 @@ export function ensurePeer(userId: string) {
   authApi
     .publicUser(userId)
     .then((u) => {
-      if (u) usePeerStore.getState().setPeer(u as PublicUser);
+      if (u) usePeerStore.getState().setPeer({ ...(u as PublicUser), verified: true } as PublicUser);
     })
     .catch(() => {
       /* profile unavailable — keep message-derived fallback */

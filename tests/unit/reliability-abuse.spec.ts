@@ -81,30 +81,45 @@ describe('Reliability & Abuse Defense Tests (real services)', () => {
 
     it('blocks Windows PE (MZ) and Linux ELF magic bytes via MediaController', async () => {
       const ctl = new MediaController(new MediaService());
+      const me = { userId: 'u1' } as any;
+      // Allowed image extension carrying executable magic bytes — the
+      // content check must fire independently of the extension gate.
       const mzReq: any = {
-        params: { '*': 'uploads/u1/evil.bin' },
-        url: '/api/media/upload/uploads/u1/evil.bin',
+        params: { '*': 'uploads/u1/evil.png' },
+        url: '/api/media/upload/uploads/u1/evil.png',
         body: Buffer.from([0x4d, 0x5a, 0x90, 0x00]),
       };
-      await expect(ctl.uploadLocal(mzReq)).rejects.toThrow(/Executable|forbidden/i);
+      await expect(ctl.uploadLocal(mzReq, me)).rejects.toThrow(/Executable|forbidden/i);
 
       const elfReq: any = {
-        params: { '*': 'uploads/u1/evil' },
-        url: '/api/media/upload/uploads/u1/evil',
+        params: { '*': 'uploads/u1/evil.png' },
+        url: '/api/media/upload/uploads/u1/evil.png',
         body: Buffer.from([0x7f, 0x45, 0x4c, 0x46]),
       };
-      await expect(ctl.uploadLocal(elfReq)).rejects.toThrow(/executable|forbidden/i);
+      await expect(ctl.uploadLocal(elfReq, me)).rejects.toThrow(/executable|forbidden/i);
+    });
+
+    it('rejects cross-user upload paths (ownership)', async () => {
+      const ctl = new MediaController(new MediaService());
+      const me = { userId: 'u1' } as any;
+      const evilReq: any = {
+        params: { '*': 'uploads/victim/x.png' },
+        url: '/api/media/upload/uploads/victim/x.png',
+        body: Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+      };
+      await expect(ctl.uploadLocal(evilReq, me)).rejects.toThrow(/own uploads directory/i);
     });
 
     it('rejects SVG with <script> / onload via MediaController', async () => {
       const ctl = new MediaController(new MediaService());
+      const me = { userId: 'u1' } as any;
       const badSvg = '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>';
       const badReq: any = {
         params: { '*': 'uploads/u1/x.svg' },
         url: '/api/media/upload/uploads/u1/x.svg',
         body: Buffer.from(badSvg, 'utf8'),
       };
-      await expect(ctl.uploadLocal(badReq)).rejects.toThrow(/SVG|script|forbidden/i);
+      await expect(ctl.uploadLocal(badReq, me)).rejects.toThrow(/SVG|script|forbidden/i);
 
       const onloadSvg = '<svg xmlns="http://www.w3.org/2000/svg" onload="fetch(\'http://evil.com\')"></svg>';
       const onloadReq: any = {
@@ -112,7 +127,7 @@ describe('Reliability & Abuse Defense Tests (real services)', () => {
         url: '/api/media/upload/uploads/u1/y.svg',
         body: Buffer.from(onloadSvg, 'utf8'),
       };
-      await expect(ctl.uploadLocal(onloadReq)).rejects.toThrow(/SVG|script|forbidden/i);
+      await expect(ctl.uploadLocal(onloadReq, me)).rejects.toThrow(/SVG|script|forbidden/i);
     });
   });
 

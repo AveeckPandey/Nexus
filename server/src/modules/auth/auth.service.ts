@@ -51,6 +51,25 @@ function requireCognito() {
   }
 }
 
+/**
+ * Local-development auth fallback (no Cognito). This path mints real session
+ * tokens, so it must never silently activate in a deployed environment:
+ * production requires an explicit ALLOW_DEV_AUTH=true opt-in.
+ */
+function devAuthAllowed(): boolean {
+  if (process.env.ALLOW_DEV_AUTH === 'true') return true;
+  if (process.env.ALLOW_DEV_AUTH === 'false') return false;
+  return process.env.NODE_ENV !== 'production';
+}
+
+function requireDevAuth() {
+  if (!devAuthAllowed()) {
+    throw new BadRequestException(
+      'Server misconfigured: COGNITO_USER_POOL_ID / COGNITO_CLIENT_ID required (local-dev auth is disabled; set ALLOW_DEV_AUTH=true only for development)',
+    );
+  }
+}
+
 function decodeJwt(token: string): any {
   try {
     const [, payload] = token.split('.');
@@ -105,6 +124,7 @@ export class AuthService {
       );
     }
     if (!hasCognito()) {
+      requireDevAuth();
       this.logger.log(`Local dev sign up for ${cleanEmail}`);
       const existing = await this.db.get(`AUTH#${cleanEmail}`, 'CRED');
       if (existing) {
@@ -165,6 +185,7 @@ export class AuthService {
 
   async confirmSignUp(dto: { email: string; code: string }) {
     if (!hasCognito()) {
+      requireDevAuth();
       return { success: true, message: 'Account verified. You may now sign in.' };
     }
     requireCognito();
@@ -190,6 +211,7 @@ export class AuthService {
     const cleanEmail = dto.email.trim().toLowerCase();
     const done = { success: true, message: 'If an account exists for this email, a reset code was sent.' };
     if (!hasCognito()) {
+      requireDevAuth();
       const cred = await this.db.get(`AUTH#${cleanEmail}`, 'CRED');
       if (!cred) return done;
       const code = String(crypto.randomInt(100000, 1000000));
@@ -225,6 +247,7 @@ export class AuthService {
     const cleanEmail = dto.email.trim().toLowerCase();
     const code = dto.code.trim();
     if (!hasCognito()) {
+      requireDevAuth();
       let stored: string | null = null;
       try {
         stored = await this.redis.get(`auth:reset:${cleanEmail}`);
@@ -287,6 +310,7 @@ export class AuthService {
 
   async resendCode(dto: { email: string }) {
     if (!hasCognito()) {
+      requireDevAuth();
       return { success: true, message: 'Fresh code sent (dev mode).' };
     }
     requireCognito();
@@ -308,6 +332,7 @@ export class AuthService {
     const cleanEmail = dto.email.trim().toLowerCase();
     await this.checkLoginLock(cleanEmail);
     if (!hasCognito()) {
+      requireDevAuth();
       this.logger.log(`Local dev login for ${cleanEmail}`);
       let cred = await this.db.get(`AUTH#${cleanEmail}`, 'CRED');
       if (!cred) {
@@ -604,6 +629,7 @@ export class AuthService {
   async refresh(refreshToken: string, email?: string) {
     // Dev fallback: the "refresh token" is a session JWT — re-mint if valid.
     if (!hasCognito()) {
+      requireDevAuth();
       try {
         const session = await this.tokens.verify(refreshToken);
         const idToken = this.tokens.mintSessionToken(session);

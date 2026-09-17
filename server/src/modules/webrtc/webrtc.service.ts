@@ -10,7 +10,10 @@ export interface CallSession {
   callType: 'video' | 'audio' | 'group';
   recipientIds: string[];
   status: 'ringing' | 'active' | 'ended';
+  /** Live socket ids (routing truth for SDP/ICE relay). */
   participants: Set<string>;
+  /** Verified user ids (authz truth; survives reconnects). */
+  userIds: Set<string>;
   createdAt: string;
 }
 
@@ -36,7 +39,8 @@ export class WebRtcService {
       callType,
       recipientIds,
       status: 'ringing',
-      participants: new Set([initiatorId]),
+      participants: new Set(),
+      userIds: new Set([initiatorId]),
       createdAt: new Date().toISOString(),
     };
     this.calls.set(callId, session);
@@ -49,13 +53,15 @@ export class WebRtcService {
     if (local) return local;
     if (!this.redis) return undefined;
     try {
-      const raw = await this.redis.getJson<Omit<CallSession, 'participants'> & {
+      const raw = await this.redis.getJson<Omit<CallSession, 'participants' | 'userIds'> & {
         participants: string[];
+        userIds: string[];
       }>(`call:${callId}`);
       if (!raw) return undefined;
       const session: CallSession = {
         ...raw,
         participants: new Set(raw.participants || []),
+        userIds: new Set(raw.userIds || []),
       };
       this.calls.set(callId, session);
       return session;
@@ -83,6 +89,7 @@ export class WebRtcService {
     const data = {
       ...session,
       participants: Array.from(session.participants),
+      userIds: Array.from(session.userIds),
     };
     this.redis.setJson(`call:${session.callId}`, data, 3600).catch(() => {});
   }

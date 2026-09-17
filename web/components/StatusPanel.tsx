@@ -129,15 +129,15 @@ export function StatusPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewer?.owner.userId, viewer?.index]);
 
-  const ring = 'bg-gradient-to-tr from-amber-400 via-pink-500 to-secondary p-[2.5px] rounded-full';
+  const ring = 'bg-[#CC5500] p-[2.5px] rounded-full shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff]';
 
   return (
-    <div className="flex-1 flex flex-col h-full min-w-0 bg-whatsapp-dark overflow-y-auto">
-      <div className="flex items-center gap-3 px-4 py-3 bg-whatsapp-panel border-b border-white/10 sticky top-0 z-10">
-        <b className="text-[15px]">Status</b>
-        <span className="text-[11px] text-whatsapp-checkGray">Stories disappear after 24h</span>
+    <div className="flex-1 flex flex-col h-full min-w-0 bg-[#E0E5EC] text-[#2F343D] overflow-y-auto">
+      <div className="flex items-center gap-3 px-4 py-3 bg-[#E0E5EC] border-b border-[#b8bcc9]/50 sticky top-0 z-10">
+        <b className="text-[15px] text-[#2F343D]">Status</b>
+        <span className="text-[11px] text-[#8A8F98]">Stories disappear after 24h</span>
         <span className="flex-1" />
-        <Button size="sm" color="secondary" isLoading={uploading} onPress={() => fileRef.current?.click()}>
+        <Button size="sm" className="bg-[#CC5500] text-white hover:bg-[#B34A00] font-semibold shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff]" isLoading={uploading} onPress={() => fileRef.current?.click()}>
           <span className="flex items-center gap-1"><PlusIcon size={12} /> Add status</span>
         </Button>
         <input
@@ -154,19 +154,19 @@ export function StatusPanel() {
       <div className="p-4 space-y-5">
         {/* My status */}
         <div>
-          <p className="text-[11px] uppercase tracking-wider text-white/40 mb-2">My status</p>
+          <p className="text-[11px] uppercase tracking-wider text-[#8A8F98] mb-2">My status</p>
           <button
             onClick={() => mine.length > 0 && setViewer({ owner: { userId: selfId || '', name: selfName || 'You', avatarUrl: selfAvatar, items: mine }, index: 0 })}
-            className="flex items-center gap-3 w-full text-left p-2 rounded-2xl hover:bg-white/5 transition"
+            className="flex items-center gap-3 w-full text-left p-2 rounded-2xl bg-[#E9EDF3] shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] border border-white/60 hover:brightness-105 transition"
           >
-            <span className={mine.length > 0 ? ring : 'p-[2.5px] rounded-full bg-white/10'}>
-              <span className="block rounded-full border-2 border-whatsapp-dark">
+            <span className={mine.length > 0 ? ring : 'p-[2.5px] rounded-full bg-[#E0E5EC] shadow-[inset_4px_4px_8px_#b8bcc9,inset_-4px_-4px_8px_#ffffff] border border-white/50'}>
+              <span className="block rounded-full border-2 border-[#E9EDF3]">
                 <Avatar src={selfAvatar} name={selfName} size="md" />
               </span>
             </span>
             <span className="flex-1 min-w-0">
-              <b className="block text-sm">My status</b>
-              <span className="block text-xs text-white/50">
+              <b className="block text-sm text-[#2F343D]">My status</b>
+              <span className="block text-xs text-[#8A8F98]">
                 {mine.length > 0 ? `${mine.length} stor${mine.length === 1 ? 'y' : 'ies'} · tap to view` : 'Tap + to share a photo or video'}
               </span>
             </span>
@@ -175,31 +175,31 @@ export function StatusPanel() {
 
         {/* Contacts' statuses */}
         <div>
-          <p className="text-[11px] uppercase tracking-wider text-white/40 mb-2">Recent updates</p>
+          <p className="text-[11px] uppercase tracking-wider text-[#8A8F98] mb-2">Recent updates</p>
           {loading ? (
             <div className="flex justify-center py-8">
               <Spinner />
             </div>
           ) : owners.length === 0 ? (
-            <p className="text-xs text-white/40 py-6 text-center">
+            <p className="text-xs text-[#8A8F98] py-6 text-center bg-[#E9EDF3] shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] border border-white/60 rounded-2xl">
               No stories from your contacts yet — they appear here for 24 hours after posting.
             </p>
           ) : (
-            <div className="space-y-1">
+            <div className="space-y-2">
               {owners.map((o) => (
                 <button
                   key={o.userId}
                   onClick={() => setViewer({ owner: o, index: 0 })}
-                  className="flex items-center gap-3 w-full text-left p-2 rounded-2xl hover:bg-white/5 transition"
+                  className="flex items-center gap-3 w-full text-left p-2 rounded-2xl bg-[#E9EDF3] shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] border border-white/60 hover:brightness-105 transition"
                 >
                   <span className={ring}>
-                    <span className="block rounded-full border-2 border-whatsapp-dark">
+                    <span className="block rounded-full border-2 border-[#E9EDF3]">
                       <Avatar src={o.avatarUrl} name={o.name} size="md" />
                     </span>
                   </span>
                   <span className="flex-1 min-w-0">
-                    <b className="block truncate text-sm">{o.name}</b>
-                    <span className="block text-xs text-white/50">
+                    <b className="block truncate text-sm text-[#2F343D]">{o.name}</b>
+                    <span className="block text-xs text-[#8A8F98]">
                       {o.items.length} stor{o.items.length === 1 ? 'y' : 'ies'} ·{' '}
                       {new Date(o.items[0].createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>

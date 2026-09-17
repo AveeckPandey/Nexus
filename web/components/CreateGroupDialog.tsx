@@ -109,16 +109,16 @@ export function CreateGroupDialog({ open, onClose }: { open: boolean; onClose: (
 
   return (
     <Modal isOpen={open} onClose={onClose} placement="top-center">
-      <ModalContent className="bg-whatsapp-panel border border-white/10 text-white">
-        <ModalHeader className="flex flex-col gap-1">
+      <ModalContent className="bg-[#E9EDF3] text-[#2F343D] rounded-3xl shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff]">
+        <ModalHeader className="flex flex-col gap-1 text-[#2F343D]">
           <span>Create group</span>
-          <span className="text-xs font-normal text-default-500">
+          <span className="text-xs font-normal text-[#8A8F98]">
             Name it, add members — keys are sealed for everyone automatically.
           </span>
         </ModalHeader>
         <ModalBody className="pb-2 space-y-4">
           <div>
-            <label htmlFor="group-name" className="block text-xs text-white/50 mb-1.5 px-1">
+            <label htmlFor="group-name" className="block text-xs text-[#8A8F98] mb-1.5 px-1">
               Group name
             </label>
             <input
@@ -128,20 +128,20 @@ export function CreateGroupDialog({ open, onClose }: { open: boolean; onClose: (
               value={title}
               maxLength={60}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full bg-whatsapp-composer border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white outline-none placeholder:text-white/30 focus:border-secondary/60 transition-colors"
+              className="w-full bg-[#E0E5EC] rounded-xl px-3 py-2.5 text-sm text-[#2F343D] outline-none placeholder:text-[#8A8F98] shadow-[inset_4px_4px_8px_#b8bcc9,inset_-4px_-4px_8px_#ffffff] focus:ring-2 focus:ring-[#CC5500]/40 transition"
             />
           </div>
           {members.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {members.map((m) => (
-                <Chip key={m.userId} onClose={() => toggle(m)} variant="flat" color="secondary" size="sm">
+                <Chip key={m.userId} onClose={() => toggle(m)} variant="flat" size="sm" className="bg-[#F5D6C2] text-[#2F343D]">
                   @{m.username}
                 </Chip>
               ))}
             </div>
           )}
           <div>
-            <label htmlFor="group-members" className="block text-xs text-white/50 mb-1.5 px-1">
+            <label htmlFor="group-members" className="block text-xs text-[#8A8F98] mb-1.5 px-1">
               Add members
             </label>
             <input
@@ -149,11 +149,11 @@ export function CreateGroupDialog({ open, onClose }: { open: boolean; onClose: (
               placeholder="Search @username, name, or email"
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              className="w-full bg-whatsapp-composer border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white outline-none placeholder:text-white/30 focus:border-secondary/60 transition-colors"
+              className="w-full bg-[#E0E5EC] rounded-xl px-3 py-2.5 text-sm text-[#2F343D] outline-none placeholder:text-[#8A8F98] shadow-[inset_4px_4px_8px_#b8bcc9,inset_-4px_-4px_8px_#ffffff] focus:ring-2 focus:ring-[#CC5500]/40 transition"
             />
           </div>
           {searching && (
-            <div className="flex items-center gap-2 text-xs text-default-500">
+            <div className="flex items-center gap-2 text-xs text-[#8A8F98]">
               <Spinner size="sm" /> Searching…
             </div>
           )}
@@ -165,18 +165,18 @@ export function CreateGroupDialog({ open, onClose }: { open: boolean; onClose: (
                 <button
                   key={u.userId}
                   onClick={() => toggle(u)}
-                  className={`w-full flex items-center gap-3 p-2 rounded-xl border text-left transition ${
-                    selected ? 'border-secondary bg-secondary/10' : 'border-white/10 bg-white/[0.02] hover:bg-white/5'
+                  className={`w-full flex items-center gap-3 p-2 rounded-xl border text-left text-[#2F343D] transition ${
+                    selected ? 'bg-[#F5D6C2] border-[#CC5500]/40 shadow-[inset_4px_4px_8px_#b8bcc9,inset_-4px_-4px_8px_#ffffff]' : 'bg-[#E0E5EC] border-transparent shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] hover:bg-white/60'
                   }`}
                 >
                   <Avatar src={u.avatarUrl} name={u.name || u.username} size="sm" className="shrink-0" />
                   <span className="flex-1 min-w-0">
-                    <b className="block truncate text-sm">{u.name || u.username}</b>
-                    <span className="block truncate text-xs text-default-500">@{u.username}</span>
+                    <b className="block truncate text-sm text-[#2F343D]">{u.name || u.username}</b>
+                    <span className="block truncate text-xs text-[#8A8F98]">@{u.username}</span>
                   </span>
                   <span
                     className={`w-5 h-5 rounded-md border flex items-center justify-center text-xs shrink-0 ${
-                      selected ? 'bg-secondary border-secondary text-white' : 'border-white/30 text-transparent'
+                      selected ? 'bg-[#CC5500] border-[#CC5500] text-white' : 'bg-[#E0E5EC] border-[#8A8F98]/50 text-transparent'
                     }`}
                     aria-hidden
                   >
@@ -188,10 +188,10 @@ export function CreateGroupDialog({ open, onClose }: { open: boolean; onClose: (
           </div>
         </ModalBody>
         <ModalFooter>
-          <Button variant="light" onPress={onClose}>
+          <Button variant="light" onPress={onClose} className="bg-[#E0E5EC] text-[#2F343D] rounded-xl shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff]">
             Cancel
           </Button>
-          <Button color="secondary" isLoading={creating} isDisabled={!title.trim() || members.length === 0} onPress={create}>
+          <Button className="bg-[#CC5500] text-white rounded-xl shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff]" isLoading={creating} isDisabled={!title.trim() || members.length === 0} onPress={create}>
             Create group ({members.length})
           </Button>
         </ModalFooter>

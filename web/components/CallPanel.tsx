@@ -118,32 +118,32 @@ export function CallPanel() {
   const ids = Object.keys(remotes);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/90 flex flex-col p-4 overflow-hidden">
-      <div className="flex items-center justify-center gap-2 mb-3">
-        <b className="text-center text-sm flex items-center gap-1.5">
+    <div className="fixed inset-0 z-50 bg-[#E0E5EC]/95 flex flex-col p-4 overflow-hidden text-[#2F343D]">
+      <div className="flex items-center justify-center gap-2 mb-3 bg-[#E9EDF3] shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] border border-white/60 rounded-2xl px-4 py-2.5 mx-auto">
+        <b className="text-center text-sm flex items-center gap-1.5 text-[#2F343D]">
           {callType === 'audio' ? <PhoneIcon size={14} /> : <VideoIcon size={14} />}
           {callType === 'audio' ? 'Audio call' : 'Video call'}
         </b>
         {isSlow && (
-          <span className="px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[10px] animate-pulse flex items-center gap-1">
+          <span className="px-2 py-0.5 rounded-full bg-[#CC5500]/10 border border-[#CC5500]/30 text-[#CC5500] text-[10px] animate-pulse flex items-center gap-1">
             <InfoIcon size={10} /> Poor connection
           </span>
         )}
       </div>
-      <div className={`flex-1 min-h-0 grid gap-2 ${ids.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
-        <video ref={localRef} autoPlay muted playsInline className="w-full h-full object-cover rounded-xl bg-whatsapp-composer" />
+      <div className={`flex-1 min-h-0 grid gap-3 ${ids.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+        <video ref={localRef} autoPlay muted playsInline className="w-full h-full object-cover rounded-2xl bg-[#2F343D] shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] border border-white/60" />
         {ids.map((id) => (
           <RemoteVideo key={id} stream={remotes[id]} />
         ))}
       </div>
       <div className="flex justify-center gap-3 mt-4">
-        <Button variant="flat" onPress={toggleMute}>{muted ? 'Unmute' : 'Mute'}</Button>
+        <Button variant="flat" className="bg-[#E9EDF3] text-[#2F343D] shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] border border-white/60 font-semibold" onPress={toggleMute}>{muted ? 'Unmute' : 'Mute'}</Button>
         {callType !== 'audio' && (
-          <Button variant="flat" color={sharing ? 'warning' : 'default'} onPress={toggleShare}>
+          <Button variant="flat" className={sharing ? "bg-[#CC5500] text-white hover:bg-[#B34A00] font-semibold shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff]" : "bg-[#E9EDF3] text-[#2F343D] shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] border border-white/60 font-semibold"} onPress={toggleShare}>
             {sharing ? 'Stop sharing' : 'Share screen'}
           </Button>
         )}
-        <Button color="danger" onPress={hangup}>End call</Button>
+        <Button className="bg-[#D64545] text-white hover:bg-[#B93A3A] font-semibold shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff]" onPress={hangup}>End call</Button>
       </div>
     </div>
   );
@@ -154,6 +154,6 @@ function RemoteVideo({ stream }: { stream: MediaStream }) {
   useEffect(() => {
     if (ref.current) ref.current.srcObject = stream;
   }, [stream]);
-  return <video ref={ref} autoPlay playsInline className="w-full h-full object-cover rounded-xl bg-whatsapp-composer" />;
+  return <video ref={ref} autoPlay playsInline className="w-full h-full object-cover rounded-2xl bg-[#2F343D] shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] border border-white/60" />;
 }
 

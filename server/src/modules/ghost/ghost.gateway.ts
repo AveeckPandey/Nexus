@@ -76,9 +76,16 @@ export class GhostGateway implements OnGatewayConnection, OnGatewayInit, OnModul
     try {
       const fwd = (client.handshake.headers?.['x-forwarded-for'] as string)?.split(',')[0]?.trim();
       const ip = fwd || client.handshake.address || 'unknown';
-      const hits = await this.redis.incr(`throttle:ws:${ip}`);
-      if (hits === 1) await this.redis.expire(`throttle:ws:${ip}`, 60);
-      if ((hits || 0) > 60) {
+      // Per-gateway key (ghost) + operator-tunable limit (default 60).
+      // See ChatGateway.handleConnection — one counter per gateway so a
+      // single socket (3 gateway handlers) is not triple-counted.
+      const wsThrottlePerMin = Math.max(
+        1,
+        parseInt(process.env.WS_THROTTLE_PER_MIN || '60', 10) || 60,
+      );
+      const hits = await this.redis.incr(`throttle:ws:ghost:${ip}`);
+      if (hits === 1) await this.redis.expire(`throttle:ws:ghost:${ip}`, 60);
+      if ((hits || 0) > wsThrottlePerMin) {
         client.emit('rate_limited', { message: 'Too many connections. Slow down.' });
         client.disconnect(true);
         return;
@@ -170,6 +177,12 @@ export class GhostGateway implements OnGatewayConnection, OnGatewayInit, OnModul
     @ConnectedSocket() c: Socket,
     @MessageBody() d: { roomId: string; messageId: string },
   ) {
+    // Membership gate: starting the burn destroys another user's message.
+    // Mirrors send_ghost_message / destroy_ghost_room.
+    const userId = c.data.userId as string | undefined;
+    if (userId && !(await this.ghost.isParticipant(d.roomId, userId))) {
+      return { error: 'Forbidden' };
+    }
     const key = `${d.roomId}:${d.messageId}`;
     if (this.timers.has(key)) return { status: 'already_burning' };
     // Honor the per-message burn window chosen at send time (5s–5min).

@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import dynamic from 'next/dynamic';
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button } from '@heroui/react';
 import { getSocket } from '@/lib/socket';
 import { registerWebPush } from '@/lib/notify';
@@ -24,8 +23,6 @@ import { AiChatPanel } from '@/components/AiChatPanel';
 import { StatusPanel } from '@/components/StatusPanel';
 import { NewChatDialog } from '@/components/NewChatDialog';
 import { ChatIcon, StatusIcon, SparkleIcon, AlienIcon, GhostIcon, PersonIcon, PhoneIcon } from '@/components/MenuIcons';
-
-const Dither = dynamic(() => import('@/components/Dither'), { ssr: false });
 
 type View = { kind: 'chat' } | { kind: 'ghost'; token?: string } | { kind: 'profile' } | { kind: 'ai' } | { kind: 'status' };
 
@@ -171,7 +168,7 @@ function Shell() {
   if (!isAuthenticated) {
     if (view.kind === 'ghost') {
       return (
-        <main className="h-[100dvh] flex flex-col bg-[#0F0E0E] text-white">
+        <main className="h-[100dvh] flex flex-col bg-[#E0E5EC] text-[#2F343D]">
           <NetworkBanner />
           <GhostPanel initialToken={view.token} onBack={() => setView({ kind: 'chat' })} />
         </main>
@@ -200,25 +197,8 @@ function Shell() {
   };
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden relative">
+    <div className="h-screen flex flex-col overflow-hidden relative bg-[#E0E5EC] text-[#2F343D]">
       <NetworkBanner />
-      {/* App-wide Dither background */}
-      <div aria-hidden className="pointer-events-none fixed inset-0 z-0 overflow-hidden bg-black">
-        <div className="absolute inset-0 w-full h-full opacity-60">
-          <Dither
-            waveColor={[0.48627450980392156, 0.22745098039215686, 0.9294117647058824]}
-            disableAnimation={false}
-            enableMouseInteraction
-            mouseRadius={0.3}
-            colorNum={4}
-            waveAmplitude={0.3}
-            waveFrequency={3}
-            waveSpeed={0.05}
-            backgroundColor={[0, 0, 0]}
-          />
-        </div>
-        <div className="absolute inset-0 bg-[#0A0618]/60" />
-      </div>
       <div className="flex-1 flex min-h-0 relative z-10">
         <Rail
           view={view.kind as RailView}
@@ -252,16 +232,16 @@ function Shell() {
               /* storage unavailable */
             }
           }}
-          className="hidden md:block w-1.5 shrink-0 cursor-col-resize bg-transparent hover:bg-secondary/60 active:bg-secondary transition-colors"
+          className="hidden md:block w-1.5 shrink-0 cursor-col-resize bg-[#c9cdd8] hover:bg-[#b8bcc9] active:bg-[#b8bcc9] transition-colors"
         />
         <div className="flex-1 flex flex-col min-w-0 pb-16 md:pb-0">
         {toast && (
-          <button onClick={() => setToast(null)} className="m-2 p-2.5 text-left text-xs bg-whatsapp-composer border border-white/10 rounded-xl">
+          <button onClick={() => setToast(null)} className="m-2 p-2.5 text-left text-xs bg-white/70 text-[#2F343D] border-l-4 border-l-[#CC5500] rounded-xl shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff]">
             <b>{toast.from}</b>: <span className="truncate">{toast.text}</span>
           </button>
         )}
         {inviteStatus && (
-          <p className="m-2 p-2.5 text-xs bg-secondary/15 border border-secondary/40 rounded-xl">{inviteStatus}</p>
+          <p className="m-2 p-2.5 text-xs bg-white/70 text-[#2F343D] border-l-4 border-l-[#CC5500] rounded-xl shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff]">{inviteStatus}</p>
         )}
         {view.kind === 'ghost' ? (
           <GhostPanel initialToken={view.token} onBack={() => setView({ kind: 'chat' })} />
@@ -274,7 +254,7 @@ function Shell() {
         ) : activeId ? (
           <>
             <button
-              className="md:hidden mx-3 mt-2 self-start text-xs text-whatsapp-checkGray"
+              className="md:hidden mx-3 mt-2 self-start text-xs text-[#6B7280]"
               onClick={() => useChatStore.getState().setActive(null)}
             >
               ← All chats
@@ -285,8 +265,8 @@ function Shell() {
           <>
             {/* Mobile conversation list with invite actions */}
             <MobileChats onGhost={() => setView({ kind: 'ghost' })} />
-            <div className="hidden md:flex flex-1 flex-col items-center justify-center text-whatsapp-checkGray gap-2">
-              <span aria-hidden className="text-white/25 [&>svg]:w-12 [&>svg]:h-12"><ChatIcon /></span>
+            <div className="hidden md:flex flex-1 flex-col items-center justify-center text-[#8A8F98] gap-2">
+              <span aria-hidden className="text-[#8A8F98] [&>svg]:w-12 [&>svg]:h-12"><ChatIcon /></span>
               <p className="text-sm">Select a conversation — or open a ghost chat.</p>
             </div>
           </>
@@ -295,12 +275,13 @@ function Shell() {
       </div>
 
       <Modal isOpen={!!incoming} onClose={() => setIncoming(null)}>
-        <ModalContent>
+        <ModalContent className="bg-[#E0E5EC] text-[#2F343D]">
           <ModalHeader><span className="flex items-center gap-1.5"><PhoneIcon size={14} /> Incoming {incoming?.callType} call</span></ModalHeader>
-          <ModalBody><p className="text-sm">{incoming?.initiatorName} is calling…</p></ModalBody>
+          <ModalBody><p className="text-sm text-[#2F343D]">{incoming?.initiatorName} is calling…</p></ModalBody>
           <ModalFooter>
             <Button
               variant="light"
+              className="bg-[#E0E5EC] text-[#2F343D] shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff]"
               onPress={() => {
                 if (incoming) getSocket()?.emit('call_reject', { callId: incoming.callId });
                 setIncoming(null);
@@ -309,7 +290,7 @@ function Shell() {
               Decline
             </Button>
             <Button
-              color="secondary"
+              className="bg-[#CC5500] hover:bg-[#B34A00] text-white"
               onPress={() => {
                 if (!incoming) return;
                 getSocket()?.emit('call_accept', { callId: incoming.callId, conversationId: incoming.conversationId });
@@ -327,7 +308,7 @@ function Shell() {
       <CreateGroupDialog open={groupOpen} onClose={() => setGroupOpen(false)} />
       <NewChatDialog open={newChatOpen} onClose={() => setNewChatOpen(false)} />
 
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 grid grid-cols-5 bg-whatsapp-panel border-t border-white/10 text-[10px]">
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 grid grid-cols-5 bg-[#E0E5EC] text-[10px] shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff]">
         {([
           { k: 'chat', label: 'Chats', icon: <ChatIcon /> },
           { k: 'status', label: 'Status', icon: <StatusIcon /> },
@@ -338,7 +319,7 @@ function Shell() {
           <button
             key={t.k}
             onClick={() => setView({ kind: t.k })}
-            className={`py-2.5 font-semibold flex flex-col items-center gap-0.5 ${view.kind === t.k ? 'text-secondary' : 'text-whatsapp-checkGray'}`}
+            className={`py-2.5 font-semibold flex flex-col items-center gap-0.5 ${view.kind === t.k ? 'text-[#CC5500]' : 'text-[#8A8F98]'}`}
           >
             <span aria-hidden className="flex items-center justify-center [&>svg]:w-5 [&>svg]:h-5">{t.icon}</span>
             {t.label}

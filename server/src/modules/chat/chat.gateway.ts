@@ -46,17 +46,37 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     try {
       const fwd = (client.handshake.headers?.['x-forwarded-for'] as string)?.split(',')[0]?.trim();
       const ip = fwd || client.handshake.address || 'unknown';
-      const isBench = Boolean(
+      const token = (client.handshake.auth?.token as string) || '';
+      // Self-asserted load-test identity. ACCEPTED ONLY when the operator
+      // explicitly enables it (ALLOW_BENCHMARK_AUTH=true, local/staging load
+      // runs). In production this branch is dead: bench tokens fall through
+      // to real verification and are rejected there.
+      const benchAllowed = process.env.ALLOW_BENCHMARK_AUTH === 'true';
+      const benchClaim = Boolean(
         client.handshake.auth?.isBenchmark ||
-        client.handshake.auth?.token?.includes('bench') ||
-        client.handshake.auth?.token?.includes('breaker') ||
-        ip === '127.0.0.1' ||
-        ip === '::1'
+          (token &&
+            (token.startsWith('bench') ||
+              token.startsWith('breaker') ||
+              token.startsWith('guest'))),
       );
+      const isLoopback = ip === '127.0.0.1' || ip === '::1';
+      const isBench = isLoopback || (benchClaim && benchAllowed);
+      if (benchClaim && !benchAllowed && !isLoopback) {
+        client.emit('unauthorized', { message: 'Invalid token' });
+        client.disconnect(true);
+        return;
+      }
       if (!isBench) {
-        const hits = await this.redis?.incr(`throttle:ws:${ip}`);
-        if (hits === 1) await this.redis?.expire(`throttle:ws:${ip}`, 60);
-        if ((hits || 0) > 60) {
+        // Operator-tunable (default 60): single-box load generators and
+        // NAT'd enterprise egress need a higher ceiling; production ALB
+        // deployments keep the default. Never disabled — only raised.
+        const wsThrottlePerMin = Math.max(
+          1,
+          parseInt(process.env.WS_THROTTLE_PER_MIN || '60', 10) || 60,
+        );
+        const hits = await this.redis?.incr(`throttle:ws:chat:${ip}`);
+        if (hits === 1) await this.redis?.expire(`throttle:ws:chat:${ip}`, 60);
+        if ((hits || 0) > wsThrottlePerMin) {
           client.emit('rate_limited', { message: 'Too many connections. Slow down.' });
           client.disconnect(true);
           return;
@@ -65,23 +85,86 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     } catch {}
     try {
       const token = (client.handshake.auth?.token as string) || '';
+      // Bench identity is only reachable when ALLOW_BENCHMARK_AUTH=true
+      // (see handleConnection gate above); otherwise these tokens fail
+      // real verification below and are disconnected.
       if (token && (token.startsWith('guest') || token.startsWith('breaker') || token.startsWith('bench') || client.handshake.auth?.isBenchmark)) {
-        client.data.userId = client.handshake.auth?.userId || `bench_${client.id}`;
+        if (process.env.ALLOW_BENCHMARK_AUTH !== 'true') {
+          throw new Error('Benchmark auth not enabled');
+        }
+        const benchUid = client.handshake.auth?.userId || `bench_${client.id}`;
+        client.data.userId = benchUid;
         client.data.username = 'bench_user';
+        if (this.redis) {
+          await this.redis.hset('user:mapping', benchUid, client.id);
+          await this.redis.set(`presence:${benchUid}`, 'online', 'EX', 60);
+        }
+        this.server?.emit('presence:update', { userId: benchUid, status: 'online' });
         return;
       }
       const user = await this.tokens.verify(token);
       client.data.userId = user.userId;
       client.data.username = user.username;
       client.join(`USER#${user.userId}`);
+      if (this.redis) {
+        await this.redis.hset('user:mapping', user.userId, client.id);
+        await this.redis.set(`presence:${user.userId}`, 'online', 'EX', 60);
+      }
+      this.server?.emit('presence:update', { userId: user.userId, status: 'online' });
     } catch {
       client.emit('unauthorized', { message: 'Invalid token' });
       client.disconnect(true);
     }
   }
 
-  handleDisconnect(client: Socket) {
+  async handleDisconnect(client: Socket) {
     this.logger.debug(`Chat socket disconnected: ${client.id}`);
+    const userId = client.data?.userId;
+    if (!userId) return;
+
+    let hasOtherSockets = false;
+    try {
+      if (this.server?.in) {
+        const remaining = await this.server.in(`USER#${userId}`).fetchSockets();
+        hasOtherSockets = Boolean(remaining && remaining.length > 0);
+      }
+    } catch {}
+
+    if (!hasOtherSockets) {
+      if (this.redis) {
+        await this.redis.hdel('user:mapping', userId);
+        await this.redis.set(`presence:${userId}`, 'offline');
+      }
+      this.server?.emit('presence:update', {
+        userId,
+        status: 'offline',
+        lastSeen: new Date().toISOString(),
+      });
+    }
+  }
+
+  @SubscribeMessage('presence:heartbeat')
+  async handlePresenceHeartbeat(@ConnectedSocket() c: Socket) {
+    const userId = c.data?.userId;
+    if (userId && this.redis) {
+      await this.redis.set(`presence:${userId}`, 'online', 'EX', 60);
+    }
+    return { status: 'ok', timestamp: Date.now() };
+  }
+
+  @SubscribeMessage('get_presence')
+  async getPresence(
+    @ConnectedSocket() c: Socket,
+    @MessageBody() d: { userIds: string[] },
+  ) {
+    if (!Array.isArray(d?.userIds)) return {};
+    const result: Record<string, string> = {};
+    for (const uid of d.userIds) {
+      if (!uid) continue;
+      const status = this.redis ? await this.redis.get(`presence:${uid}`) : 'offline';
+      result[uid] = status === 'online' ? 'online' : 'offline';
+    }
+    return result;
   }
 
   @SubscribeMessage('join_room')
@@ -239,10 +322,15 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('typing_start')
-  typingStart(
+  async typingStart(
     @ConnectedSocket() c: Socket,
     @MessageBody() d: { conversationId: string; username: string },
   ) {
+    // Membership gate: outsiders must not probe presence or inject typing
+    // indicators into rooms they cannot read.
+    if (!c.data.userId || !(await this.chat.isMember(d.conversationId, c.data.userId))) {
+      return { error: 'Forbidden' };
+    }
     const now = Date.now();
     if (c.data.lastTyping && now - c.data.lastTyping < 1500) {
       return; // Skip duplicate typing events within 1.5s
@@ -256,10 +344,13 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('typing_stop')
-  typingStop(
+  async typingStop(
     @ConnectedSocket() c: Socket,
     @MessageBody() d: { conversationId: string },
   ) {
+    if (!c.data.userId || !(await this.chat.isMember(d.conversationId, c.data.userId))) {
+      return { error: 'Forbidden' };
+    }
     c.to(d.conversationId).emit('user_typing_stop', {
       userId: c.data.userId,
       conversationId: d.conversationId,
@@ -273,6 +364,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     d: { conversationId: string; messageSk: string; username: string; emoji: string },
   ) {
     const userId = c.data.userId || 'anonymous';
+    // Membership gate: reactions write to conversation rows.
+    if (!c.data.userId || !(await this.chat.isMember(d.conversationId, c.data.userId))) {
+      return { error: 'Forbidden' };
+    }
     await this.chat.toggleReaction(d.conversationId, d.messageSk, userId, d.username, d.emoji);
     this.server.to(d.conversationId).emit('reaction_updated', {
       conversationId: d.conversationId,
@@ -288,15 +383,19 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() c: Socket,
     @MessageBody() d: { conversationId: string; messageId: string },
   ) {
-    if (c.data.userId) {
-      await this.chat.markRead(d.conversationId, c.data.userId, d.messageId);
+    // Membership gate (CRITICAL): markRead upserts the membership row, so an
+    // unchecked call here forges membership and defeats every later guard.
+    if (!c.data.userId || !(await this.chat.isMember(d.conversationId, c.data.userId))) {
+      return { error: 'Forbidden' };
     }
+    await this.chat.markRead(d.conversationId, c.data.userId, d.messageId);
     c.to(d.conversationId).emit('message_status_update', {
       conversationId: d.conversationId,
       messageId: d.messageId,
       status: 'read',
       userId: c.data.userId,
     });
+    return { status: 'read', conversationId: d.conversationId, messageId: d.messageId };
   }
 
   @SubscribeMessage('network_ping')

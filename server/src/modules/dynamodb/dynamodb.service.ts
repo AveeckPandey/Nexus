@@ -144,10 +144,13 @@ export class DynamoDbService implements OnModuleInit, OnModuleDestroy {
     }
 
     if (hasAwsCredentials()) {
-      await this.sendWithRetry(
+      const ok = await this.sendWithRetry(
         () => dynamoDocumentClient.send(new PutCommand({ TableName: this.tableName, Item: item })),
         'put',
       );
+      // Never acknowledge a write the cloud did not persist: callers turn
+      // this into user-visible success (sent messages, saved profiles).
+      if (ok === null) throw new Error('DynamoDB put failed after retries');
     }
   }
 
@@ -258,13 +261,14 @@ export class DynamoDbService implements OnModuleInit, OnModuleDestroy {
     }
 
     if (!this.useMemory()) {
-      try {
-        await dynamoDocumentClient.send(
-          new DeleteCommand({ TableName: this.tableName, Key: { PK: pk, SK: sk } }),
-        );
-      } catch (err: any) {
-        this.logger.warn(`DynamoDB delete failed: ${err.message}`);
-      }
+      const ok = await this.sendWithRetry(
+        () =>
+          dynamoDocumentClient.send(
+            new DeleteCommand({ TableName: this.tableName, Key: { PK: pk, SK: sk } }),
+          ),
+        'delete',
+      );
+      if (ok === null) throw new Error('DynamoDB delete failed after retries');
     }
   }
 
@@ -320,7 +324,7 @@ export class DynamoDbService implements OnModuleInit, OnModuleDestroy {
     }
 
     if (!this.useMemory()) {
-      await this.sendWithRetry(
+      const ok = await this.sendWithRetry(
         () =>
           dynamoDocumentClient.send(
             new UpdateCommand({
@@ -333,6 +337,7 @@ export class DynamoDbService implements OnModuleInit, OnModuleDestroy {
           ),
         'update',
       );
+      if (ok === null) throw new Error('DynamoDB update failed after retries');
     }
   }
 

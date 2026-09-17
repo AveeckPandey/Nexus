@@ -5,6 +5,7 @@
   "description": "Nexus TESTING_SPEC.md suite: unit, integration, security, e2e, load",
   "scripts": {
     "test": "jest tests/unit tests/integration tests/security",
+    "test:notifications": "jest tests/unit/notifications.spec.ts --verbose",
     "test:unit": "jest tests/unit",
     "test:integration": "jest tests/integration",
     "test:security": "jest tests/security",
@@ -17,6 +18,10 @@
     "test:load:10k": "node tests/load/benchmark-10k.js",
     "test:load:50k": "node tests/load/benchmark-50k.js",
     "test:load:100k": "node tests/load/benchmark-100k.js",
+    "test:load:k6:smoke": "k6 run -e K6_PROFILE=smoke tests/load/k6-nexus-loadtest.js",
+    "test:load:k6:load": "k6 run -e K6_PROFILE=load tests/load/k6-nexus-loadtest.js",
+    "test:load:k6:stress": "k6 run -e K6_PROFILE=stress tests/load/k6-nexus-loadtest.js",
+    "test:load:k6:spike": "k6 run -e K6_PROFILE=spike tests/load/k6-nexus-loadtest.js",
     "test:mem": "clinic doctor --on-port 'artillery run tests/load/1k-baseline.yml' -- npm run start:prod --prefix server",
     "benchmark:1k": "node tests/load/benchmark-1k.js",
     "benchmark:2pod": "node tests/load/benchmark-2pod.js",
@@ -24,7 +29,9 @@
     "benchmark:50k": "node tests/load/benchmark-cluster-50k.js",
     "makeittobreakit": "node tests/load/makeittobreakit.js",
     "pipeline": "node scripts/verify-pipeline.js",
-    "pipeline:canary": "node scripts/verify-pipeline.js --canary-only"
+    "pipeline:canary": "node scripts/verify-pipeline.js --canary-only",
+    "test:proof": "node scripts/showcase-benchmark.js",
+    "test:break": "node tests/load/progressive-break-test.js"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

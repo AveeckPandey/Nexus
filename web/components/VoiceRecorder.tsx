@@ -109,20 +109,20 @@ export function VoiceRecorder({ onSend, onCancel, onBusy }: Props) {
   };
 
   return (
-    <div className="flex-1 flex items-center gap-2 bg-whatsapp-composer rounded-xl px-3 py-2">
-      <span className="w-2.5 h-2.5 rounded-full bg-danger animate-pulse shrink-0" />
-      <span className="text-xs font-mono w-10 shrink-0">
+    <div className="flex-1 flex items-center gap-2 bg-[#E0E5EC] border border-white/70 rounded-3xl px-3 py-2 shadow-[inset_4px_4px_8px_#b8bcc9,inset_-4px_-4px_8px_#ffffff]">
+      <span className="w-2.5 h-2.5 rounded-full bg-[#CC5500] animate-pulse shrink-0" />
+      <span className="text-xs font-mono w-10 shrink-0 text-[#2F343D]">
         {Math.floor(secs / 60)}:{String(secs % 60).padStart(2, '0')}
       </span>
       <div className="flex-1 flex items-center gap-[2px] h-8" aria-hidden>
         {bars.map((h, i) => (
-          <span key={i} className="flex-1 rounded bg-danger/80" style={{ height: `${h}px` }} />
+          <span key={i} className="flex-1 rounded bg-[#CC5500]/70" style={{ height: `${h}px` }} />
         ))}
       </div>
-      <Button size="sm" variant="light" onPress={cancel} aria-label="Cancel recording">
+      <Button size="sm" variant="light" onPress={cancel} aria-label="Cancel recording" className="text-[#8A8F98] hover:text-[#CC5500] bg-transparent min-w-0">
         <CloseIcon size={14} />
       </Button>
-      <Button size="sm" color="danger" onPress={stopAndSend}>
+      <Button size="sm" onPress={stopAndSend} aria-label="Send voice note" className="bg-[#CC5500] hover:bg-[#B34A00] text-white font-bold rounded-full shadow-[4px_4px_8px_#b8bcc9,-4px_-4px_8px_#ffffff]">
         Send
       </Button>
     </div>

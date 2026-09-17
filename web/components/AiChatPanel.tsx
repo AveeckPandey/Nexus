@@ -101,52 +101,46 @@ export function AiChatPanel() {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full min-w-0 bg-whatsapp-dark">
-      <div className="flex items-center gap-3 px-4 py-2.5 bg-whatsapp-panel border-b border-white/10">
+    <div className="flex-1 flex flex-col h-full min-w-0 bg-[#E0E5EC] text-[#2F343D]">
+      <div className="flex items-center gap-3 px-4 py-2.5 bg-[#E0E5EC] border-b border-[#b8bcc9]/50">
         <Avatar
           name="Nexus AI"
           src="/nexus-alien.png"
           size="sm"
-          className="shrink-0 bg-transparent"
+          className="shrink-0 bg-[#E9EDF3] text-[#CC5500] shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] border border-[#CC5500]/30"
         />
         <div className="flex-1 min-w-0">
           <span className="flex items-center gap-1.5">
-            <b className="truncate text-sm">Nexus AI</b>
-            <span className="text-[9px] px-1 py-0.2 rounded bg-cyan-500/20 text-cyan-300 font-mono">BOT</span>
+            <b className="truncate text-sm text-[#2F343D]">Nexus AI</b>
+            <span className="text-[9px] px-1 py-0.2 rounded bg-[#CC5500] text-white font-mono">BOT</span>
           </span>
-          <span className="block text-[11px] text-whatsapp-checkGray truncate">
+          <span className="block text-[11px] text-[#8A8F98] truncate">
             Dedicated assistant · history stays on this device
           </span>
         </div>
-        <Button size="sm" variant="flat" onPress={() => setMessages((prev) => prev.slice(0, 1))}>
+        <Button size="sm" variant="flat" className="bg-[#E9EDF3] text-[#2F343D] shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] border border-white/60" onPress={() => setMessages((prev) => prev.slice(0, 1))}>
           Clear
         </Button>
       </div>
 
       <div
-        className="flex-1 overflow-y-auto p-4 space-y-2"
-        style={{
-          backgroundImage:
-            'linear-gradient(rgba(20, 9, 43, 0.88), rgba(20, 9, 43, 0.88)), url(/doodle-bg.jpg)',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-        }}
+        className="flex-1 overflow-y-auto p-4 space-y-2 bg-[#E0E5EC]"
       >
         {messages.map((m) =>
           m.role === 'user' ? (
             <div key={m.id} className="flex justify-end mb-2">
-              <div className="max-w-[78%] rounded-2xl rounded-br-sm px-3 py-2 text-sm shadow-sm bg-whatsapp-outgoing">
+              <div className="max-w-[78%] rounded-2xl rounded-br-sm px-3 py-2 text-sm bg-[#CC5500] text-white shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff]">
                 <p className="whitespace-pre-wrap break-words">{m.text}</p>
-                <p className="text-[10px] opacity-60 text-right mt-1">
+                <p className="text-[10px] text-white/80 text-right mt-1">
                   {new Date(m.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </p>
               </div>
             </div>
           ) : (
             <div key={m.id} className="flex justify-start mb-2">
-              <div className="max-w-[85%] rounded-2xl rounded-bl-sm px-3 py-2 text-sm shadow-md bg-gradient-to-br from-[#0c1a24] to-[#1b1226] border border-cyan-500/40 text-cyan-50">
+              <div className="max-w-[85%] rounded-2xl rounded-bl-sm px-3 py-2 text-sm bg-[#E9EDF3] text-[#2F343D] shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] border border-white/60">
                 <SummaryBody text={m.text} />
-                <p className="text-[10px] opacity-60 text-right mt-1">
+                <p className="text-[10px] text-[#8A8F98] text-right mt-1">
                   {new Date(m.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </p>
               </div>
@@ -155,12 +149,12 @@ export function AiChatPanel() {
         )}
         {thinking && (
           <div className="flex justify-start mb-2">
-            <div className="rounded-2xl rounded-bl-sm px-4 py-3 bg-gradient-to-br from-[#0c1a24] to-[#1b1226] border border-cyan-500/40">
+            <div className="rounded-2xl rounded-bl-sm px-4 py-3 bg-[#E9EDF3] shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] border border-white/60">
               <span className="inline-flex items-center gap-1.5" aria-label="Nexus AI is thinking">
                 {[0, 1, 2].map((i) => (
                   <span
                     key={i}
-                    className="w-2 h-2 rounded-full bg-cyan-300/80 animate-typing-bounce"
+                    className="w-2 h-2 rounded-full bg-[#CC5500]/70 animate-typing-bounce"
                     style={{ animationDelay: `${i * 0.18}s` }}
                   />
                 ))}
@@ -171,20 +165,20 @@ export function AiChatPanel() {
         <div ref={bottomRef} />
       </div>
 
-      <div className="p-3 bg-whatsapp-panel border-t border-white/10">
+      <div className="p-3 bg-[#E0E5EC] border-t border-[#b8bcc9]/50">
         {expired && (
-          <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-amber-400/30 bg-amber-400/10 px-3.5 py-2.5 text-[12.5px] text-amber-200">
+          <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-[#CC5500]/30 bg-[#CC5500]/10 px-3.5 py-2.5 text-[12.5px] text-[#2F343D]">
             <span>Session expired — sign in again to keep chatting.</span>
             <button
               onClick={signOut}
-              className="shrink-0 rounded-lg bg-white/10 hover:bg-white/15 px-3 py-1.5 text-[12px] font-semibold transition"
+              className="shrink-0 rounded-lg bg-[#E9EDF3] shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] border border-white/60 hover:text-[#CC5500] px-3 py-1.5 text-[12px] font-semibold transition text-[#2F343D]"
             >
               Sign in again
             </button>
           </div>
         )}
         <div className="flex items-end gap-2">
-          <div className="flex-1 flex items-center bg-whatsapp-composer border border-white/10 rounded-3xl px-4 py-1.5 focus-within:border-secondary/60 transition-colors">
+          <div className="flex-1 flex items-center bg-[#E0E5EC] shadow-[inset_4px_4px_8px_#b8bcc9,inset_-4px_-4px_8px_#ffffff] border border-white/50 rounded-3xl px-4 py-1.5 focus-within:border-[#CC5500]/40 transition-colors">
             <input
               value={text}
               onChange={(e) => setText(e.target.value)}
@@ -196,10 +190,10 @@ export function AiChatPanel() {
               }}
               placeholder="Ask Nexus AI anything…"
               aria-label="Ask Nexus AI anything"
-              className="flex-1 bg-transparent outline-none text-sm placeholder:text-whatsapp-checkGray py-1.5"
+              className="flex-1 bg-transparent outline-none text-sm text-[#2F343D] placeholder:text-[#8A8F98] py-1.5"
             />
           </div>
-          <Button color="secondary" className="font-bold rounded-full" onPress={send} isLoading={thinking} aria-label="Send to Nexus AI">
+          <Button className="font-bold rounded-full bg-[#CC5500] text-white hover:bg-[#B34A00] shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff]" onPress={send} isLoading={thinking} aria-label="Send to Nexus AI">
             <SendIcon />
           </Button>
         </div>

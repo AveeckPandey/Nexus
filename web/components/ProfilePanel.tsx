@@ -197,23 +197,23 @@ export function ProfilePanel({ onBack }: { onBack?: () => void }) {
     setShareMsg((await copyText(inviteLink)) ? 'Invite link copied.' : 'Copy failed.');
   };
 
-  const rowLabel = 'text-[13px] text-white/50 px-6 pt-5 pb-1';
+  const rowLabel = 'text-[13px] text-[#8A8F98] px-6 pt-5 pb-1';
 
   return (
-    <div className="flex-1 overflow-y-auto min-w-0 bg-whatsapp-panel">
+    <div className="flex-1 overflow-y-auto min-w-0 bg-[#E0E5EC] text-[#2F343D]">
       <div className="max-w-md mx-auto pb-8">
         {/* Header */}
-        <div className="flex items-center gap-4 px-4 py-3 sticky top-0 bg-whatsapp-panel/95 backdrop-blur z-10">
+        <div className="flex items-center gap-4 px-4 py-3 sticky top-0 bg-[#E0E5EC]/95 backdrop-blur z-10 border-b border-[#b8bcc9]/50">
           {onBack && (
             <button
               onClick={onBack}
               aria-label="Back to chats"
-              className="p-1.5 -ml-1.5 rounded-full text-white/80 hover:text-white hover:bg-white/10 transition"
+              className="p-1.5 -ml-1.5 rounded-full text-[#2F343D] hover:text-[#CC5500] bg-[#E9EDF3] shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] border border-white/60 transition"
             >
               <BackIcon />
             </button>
           )}
-          <h1 className="text-[15px] font-semibold text-white">Edit profile</h1>
+          <h1 className="text-[15px] font-semibold text-[#2F343D]">Edit profile</h1>
         </div>
 
         {/* Photo */}
@@ -222,12 +222,12 @@ export function ProfilePanel({ onBack }: { onBack?: () => void }) {
             <button
               onClick={() => fileInputRef.current?.click()}
               title="Change profile picture"
-              className="block w-44 h-44 rounded-full overflow-hidden bg-whatsapp-composer hover:brightness-110 transition"
+              className="block w-44 h-44 rounded-full overflow-hidden bg-[#E9EDF3] shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] border-4 border-[#E9EDF3] hover:brightness-105 transition"
             >
               {currentAvatar ? (
                 <img src={currentAvatar} alt="Profile" className="w-full h-full object-cover" />
               ) : (
-                <span className="w-full h-full flex items-center justify-center text-white/70">
+                <span className="w-full h-full flex items-center justify-center text-[#8A8F98]">
                   <CameraIcon />
                 </span>
               )}
@@ -236,7 +236,7 @@ export function ProfilePanel({ onBack }: { onBack?: () => void }) {
               onClick={() => fileInputRef.current?.click()}
               aria-label="Change profile picture"
               title="Change profile picture"
-              className="absolute bottom-1 right-1 w-11 h-11 rounded-full bg-whatsapp-outgoing hover:bg-secondary text-white flex items-center justify-center shadow-lg transition"
+              className="absolute bottom-1 right-1 w-11 h-11 rounded-full bg-[#CC5500] hover:bg-[#B34A00] text-white flex items-center justify-center shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] border border-white/40 transition"
             >
               {avatarUploading ? <Spinner size="sm" color="default" /> : <CameraIcon />}
             </button>
@@ -250,14 +250,14 @@ export function ProfilePanel({ onBack }: { onBack?: () => void }) {
           </div>
         </div>
         {avatarMsg && (
-          <p className={`text-xs text-center px-6 pb-2 ${avatarMsg.type === 'success' ? 'text-secondary' : 'text-danger'}`}>
+          <p className={`text-xs text-center px-6 pb-2 ${avatarMsg.type === 'success' ? 'text-[#CC5500]' : 'text-danger'}`}>
             {avatarMsg.text}
           </p>
         )}
 
         {/* About */}
         <p className={rowLabel}>About</p>
-        <div className="bg-whatsapp-composer px-6 py-3.5 flex items-center gap-3">
+        <div className="mx-4 rounded-xl bg-[#E0E5EC] shadow-[inset_4px_4px_8px_#b8bcc9,inset_-4px_-4px_8px_#ffffff] border border-white/50 px-6 py-3.5 flex items-center gap-3">
           {aboutEdit ? (
             <span className="flex-1 flex items-center gap-2">
               <input
@@ -273,27 +273,27 @@ export function ProfilePanel({ onBack }: { onBack?: () => void }) {
                   }
                 }}
                 placeholder={DEFAULT_ABOUT}
-                className="flex-1 bg-transparent outline-none text-[15px] text-white border-b border-secondary pb-1"
+                className="flex-1 bg-transparent outline-none text-[15px] text-[#2F343D] placeholder:text-[#8A8F98] border-b border-[#CC5500]/50 pb-1"
               />
               <button
                 onClick={saveAbout}
                 disabled={aboutSaving}
-                className="text-secondary text-sm font-medium disabled:opacity-50"
+                className="text-[#CC5500] hover:text-[#B34A00] text-sm font-medium disabled:opacity-50"
               >
                 Save
               </button>
             </span>
           ) : (
             <>
-              <span className="text-white/50 flex items-center"><SmileIcon size={18} /></span>
-              <span className="flex-1 text-[15px] text-white">{shown?.about || DEFAULT_ABOUT}</span>
+              <span className="text-[#8A8F98] flex items-center"><SmileIcon size={18} /></span>
+              <span className="flex-1 text-[15px] text-[#2F343D]">{shown?.about || DEFAULT_ABOUT}</span>
               <button
                 onClick={() => {
                   setAbout(shown?.about || '');
                   setAboutEdit(true);
                 }}
                 aria-label="Edit about"
-                className="p-1.5 rounded-full text-white/60 hover:text-white hover:bg-white/10 transition"
+                className="p-1.5 rounded-full text-[#8A8F98] hover:text-[#CC5500] hover:bg-[#E9EDF3] transition"
               >
                 <PencilIcon />
               </button>
@@ -303,7 +303,7 @@ export function ProfilePanel({ onBack }: { onBack?: () => void }) {
 
         {/* Name */}
         <p className={rowLabel}>Name</p>
-        <div className="bg-whatsapp-composer px-6 py-3.5 flex items-center gap-3">
+        <div className="mx-4 rounded-xl bg-[#E0E5EC] shadow-[inset_4px_4px_8px_#b8bcc9,inset_-4px_-4px_8px_#ffffff] border border-white/50 px-6 py-3.5 flex items-center gap-3">
           {nameEdit ? (
             <span className="flex-1 flex items-center gap-2">
               <input
@@ -319,26 +319,26 @@ export function ProfilePanel({ onBack }: { onBack?: () => void }) {
                   }
                 }}
                 placeholder="Your name"
-                className="flex-1 bg-transparent outline-none text-[15px] text-white border-b border-secondary pb-1"
+                className="flex-1 bg-transparent outline-none text-[15px] text-[#2F343D] placeholder:text-[#8A8F98] border-b border-[#CC5500]/50 pb-1"
               />
               <button
                 onClick={saveName}
                 disabled={nameSaving || !name.trim()}
-                className="text-secondary text-sm font-medium disabled:opacity-50"
+                className="text-[#CC5500] hover:text-[#B34A00] text-sm font-medium disabled:opacity-50"
               >
                 Save
               </button>
             </span>
           ) : (
             <>
-              <span className="flex-1 text-[15px] text-white">{shown?.name || shown?.username || '—'}</span>
+              <span className="flex-1 text-[15px] text-[#2F343D]">{shown?.name || shown?.username || '—'}</span>
               <button
                 onClick={() => {
                   setName(shown?.name || '');
                   setNameEdit(true);
                 }}
                 aria-label="Edit name"
-                className="p-1.5 rounded-full text-white/60 hover:text-white hover:bg-white/10 transition"
+                className="p-1.5 rounded-full text-[#8A8F98] hover:text-[#CC5500] hover:bg-[#E9EDF3] transition"
               >
                 <PencilIcon />
               </button>
@@ -348,10 +348,10 @@ export function ProfilePanel({ onBack }: { onBack?: () => void }) {
 
         {/* Username — our identity instead of a phone number */}
         <p className={rowLabel}>Username</p>
-        <div className="bg-whatsapp-composer px-6 py-3.5 flex items-center gap-3">
+        <div className="mx-4 rounded-xl bg-[#E0E5EC] shadow-[inset_4px_4px_8px_#b8bcc9,inset_-4px_-4px_8px_#ffffff] border border-white/50 px-6 py-3.5 flex items-center gap-3">
           {unameEdit ? (
             <span className="flex-1 flex items-center gap-2">
-              <span className="text-white/50">@</span>
+              <span className="text-[#8A8F98]">@</span>
               <input
                 autoFocus
                 value={username}
@@ -364,24 +364,24 @@ export function ProfilePanel({ onBack }: { onBack?: () => void }) {
                   }
                 }}
                 placeholder="aveeck"
-                className="flex-1 bg-transparent outline-none text-[15px] text-white border-b border-secondary pb-1"
+                className="flex-1 bg-transparent outline-none text-[15px] text-[#2F343D] placeholder:text-[#8A8F98] border-b border-[#CC5500]/50 pb-1"
               />
               <button
                 onClick={saveUsername}
                 disabled={unameSaving}
-                className="text-secondary text-sm font-medium disabled:opacity-50"
+                className="text-[#CC5500] hover:text-[#B34A00] text-sm font-medium disabled:opacity-50"
               >
                 Save
               </button>
             </span>
           ) : (
             <>
-              <span className="flex-1 text-[15px] text-white">@{handle || '—'}</span>
+              <span className="flex-1 text-[15px] text-[#2F343D]">@{handle || '—'}</span>
               <button
                 onClick={() => handle && copyField('username', `@${handle}`)}
                 aria-label="Copy username"
                 title={copied === 'username' ? 'Copied!' : 'Copy username'}
-                className="p-1.5 rounded-full text-white/60 hover:text-white hover:bg-white/10 transition"
+                className="p-1.5 rounded-full text-[#8A8F98] hover:text-[#CC5500] hover:bg-[#E9EDF3] transition"
               >
                 <CopyIcon />
               </button>
@@ -392,25 +392,25 @@ export function ProfilePanel({ onBack }: { onBack?: () => void }) {
                   setUnameEdit(true);
                 }}
                 aria-label="Edit username"
-                className="p-1.5 rounded-full text-white/60 hover:text-white hover:bg-white/10 transition"
+                className="p-1.5 rounded-full text-[#8A8F98] hover:text-[#CC5500] hover:bg-[#E9EDF3] transition"
               >
                 <PencilIcon />
               </button>
             </>
           )}
         </div>
-        {unameMsg && <p className="text-[11px] text-white/50 px-6 pt-1">{unameMsg}</p>}
+        {unameMsg && <p className="text-[11px] text-[#8A8F98] px-6 pt-1">{unameMsg}</p>}
 
         {/* Email */}
         <p className={rowLabel}>Email</p>
-        <div className="bg-whatsapp-composer px-6 py-3.5 flex items-center gap-3">
-          <span className="flex-1 truncate text-[15px] text-white">{shown?.email || '—'}</span>
+        <div className="mx-4 rounded-xl bg-[#E0E5EC] shadow-[inset_4px_4px_8px_#b8bcc9,inset_-4px_-4px_8px_#ffffff] border border-white/50 px-6 py-3.5 flex items-center gap-3">
+          <span className="flex-1 truncate text-[15px] text-[#2F343D]">{shown?.email || '—'}</span>
           {shown?.email && (
             <button
               onClick={() => copyField('email', shown.email)}
               aria-label="Copy email"
               title={copied === 'email' ? 'Copied!' : 'Copy email'}
-              className="p-1.5 rounded-full text-white/60 hover:text-white hover:bg-white/10 transition"
+              className="p-1.5 rounded-full text-[#8A8F98] hover:text-[#CC5500] hover:bg-[#E9EDF3] transition"
             >
               <CopyIcon />
             </button>
@@ -426,38 +426,39 @@ export function ProfilePanel({ onBack }: { onBack?: () => void }) {
 
         {/* Invite card */}
         {inviteLink && (
-          <div className="mx-4 mt-6 space-y-2 rounded-xl border border-white/10 p-3 bg-whatsapp-composer">
-            <p className="text-xs text-white/50">Personal invite link — no phone number needed</p>
-            <p className="text-xs break-all text-secondary">{inviteLink}</p>
+          <div className="mx-4 mt-6 space-y-2 rounded-xl border border-white/60 p-3 bg-[#E9EDF3] shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff]">
+            <p className="text-xs text-[#8A8F98]">Personal invite link — no phone number needed</p>
+            <p className="text-xs break-all text-[#CC5500] font-mono bg-[#E0E5EC] shadow-[inset_4px_4px_8px_#b8bcc9,inset_-4px_-4px_8px_#ffffff] border border-white/50 rounded-lg p-2">{inviteLink}</p>
             <div className="flex gap-2">
-              <Button size="sm" color="secondary" className="flex-1" onPress={share}>
+              <Button size="sm" className="flex-1 bg-[#CC5500] text-white hover:bg-[#B34A00] font-semibold shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff]" onPress={share}>
                 Share…
               </Button>
-              <Button size="sm" variant="flat" className="flex-1" onPress={copy}>
+              <Button size="sm" variant="flat" className="flex-1 bg-[#E9EDF3] text-[#2F343D] shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] border border-white/60" onPress={copy}>
                 Copy
               </Button>
             </div>
             <div className="flex items-center gap-3 pt-1">
-              <span className="bg-white p-2 rounded-xl shrink-0">
+              <span className="bg-white p-2 rounded-xl shrink-0 shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] border border-white/60">
                 <QRCode value={inviteLink} size={96} />
               </span>
-              <p className="text-[11px] leading-5 text-white/50">
+              <p className="text-[11px] leading-5 text-[#8A8F98]">
                 In-person invites: your friend scans this QR with any phone camera and
                 lands in an encrypted chat with you — no download, no phonebook.
               </p>
             </div>
-            {shareMsg && <p className="text-[11px] text-secondary">{shareMsg}</p>}
+            {shareMsg && <p className="text-[11px] text-[#CC5500]">{shareMsg}</p>}
           </div>
         )}
 
         {/* Language */}
         <div className="mx-4 mt-4">
-          <p className="text-xs text-white/50 mb-1 px-1">Translation language</p>
+          <p className="text-xs text-[#8A8F98] mb-1 px-1">Translation language</p>
           <Select
             aria-label="Language"
             selectedKeys={[lang]}
             isDisabled={saving}
             onSelectionChange={(k) => saveLang(Array.from(k)[0] as string)}
+            classNames={{ trigger: "bg-[#E9EDF3] shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] border border-white/60 text-[#2F343D]", value: "text-[#2F343D]" }}
           >
             {LANGS.map((l) => (
               <SelectItem key={l}>{l}</SelectItem>
@@ -465,8 +466,8 @@ export function ProfilePanel({ onBack }: { onBack?: () => void }) {
           </Select>
         </div>
 
-        <div className="mx-4 mt-4 text-[11px] text-white/50 bg-whatsapp-composer rounded-xl p-3 leading-5 flex gap-1.5">
-          <span className="shrink-0 mt-0.5 flex items-center"><LockIcon size={11} /></span>
+        <div className="mx-4 mt-4 text-[11px] text-[#8A8F98] bg-[#E9EDF3] shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] border border-white/60 rounded-xl p-3 leading-5 flex gap-1.5">
+          <span className="shrink-0 mt-0.5 flex items-center text-[#CC5500]"><LockIcon size={11} /></span>
           <span>
             Your per-chat encryption keys never leave this browser. Share a chat key from the
             key button inside any conversation so your other devices can decrypt history.
@@ -474,7 +475,7 @@ export function ProfilePanel({ onBack }: { onBack?: () => void }) {
         </div>
 
         <div className="mx-4 mt-4">
-          <Button color="danger" variant="flat" className="w-full" onPress={logout}>
+          <Button variant="flat" className="w-full bg-[#E9EDF3] text-[#2F343D] shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] border border-white/60 font-semibold" onPress={logout}>
             Logout
           </Button>
         </div>

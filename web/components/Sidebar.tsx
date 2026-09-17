@@ -8,6 +8,7 @@ import { sealKeysForConversation } from '@/lib/keyx';
 import { useChatStore } from '@/store/chat';
 import { useAuthStore } from '@/store/auth';
 import { usePeerStore, learnPeerFromMessage, ensurePeer } from '@/store/peers';
+import { usePresenceStore } from '@/store/presence';
 import { NewChatDialog } from './NewChatDialog';
 import { InviteDialog } from './InviteDialog';
 import { SearchIcon, ComposeIcon, InviteIcon, GhostIcon } from './MenuIcons';
@@ -139,8 +140,8 @@ function FilterPills({
           onClick={() => onChange(p.k)}
           className={`px-3 py-1 rounded-full text-xs font-medium transition ${
             filter === p.k
-              ? 'bg-whatsapp-outgoing text-white'
-              : 'bg-white/10 text-white/80 hover:bg-white/15'
+              ? 'bg-[#CC5500] text-white shadow-[4px_4px_8px_#b8bcc9,-4px_-4px_8px_#ffffff]'
+              : 'bg-[#E0E5EC] text-[#6B7280] shadow-[inset_4px_4px_8px_#b8bcc9,inset_-4px_-4px_8px_#ffffff] hover:text-[#2F343D]'
           }`}
         >
           {p.label}
@@ -164,27 +165,36 @@ function ChatRow({
   mine: boolean;
 }) {
   const { peer, name } = useConvPeer(c);
+  const isOnline = usePresenceStore((s) => (peer?.userId ? s.presence[peer.userId]?.status === 'online' : false));
   return (
     <button
       onClick={() => onOpen(c.id)}
-      className={`w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-white/5 transition ${
-        active ? 'bg-white/10' : ''
+      className={`relative w-full flex items-center gap-3 px-3 py-2.5 text-left transition rounded-xl ${
+        active
+          ? 'bg-white/70 shadow-[inset_4px_4px_8px_#b8bcc9,inset_-4px_-4px_8px_#ffffff]'
+          : 'hover:bg-white/50'
       }`}
     >
-      <Avatar src={peer?.avatarUrl} name={name} size="md" className="shrink-0" />
+      {active && <span className="absolute left-0 top-2 bottom-2 w-1 rounded-full bg-[#CC5500]" aria-hidden />}
+      <div className="relative shrink-0">
+        <Avatar src={peer?.avatarUrl} name={name} size="md" className="shrink-0" />
+        {c.type !== 'group' && isOnline && (
+          <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-[#22C55E] border-2 border-[#E0E5EC]" title="Online" />
+        )}
+      </div>
       <span className="flex-1 min-w-0">
         <span className="flex items-baseline justify-between gap-2">
-          <b className="truncate text-[15px] font-medium">{name}</b>
-          <span className={`text-[11px] shrink-0 ${unread ? 'text-secondary' : 'text-white/50'}`}>
+          <b className="truncate text-[15px] font-medium text-[#2F343D]">{name}</b>
+          <span className={`text-[11px] shrink-0 ${unread ? 'text-[#CC5500]' : 'text-[#8A8F98]'}`}>
             {formatChatTime(c.lastMessage?.createdAt)}
           </span>
         </span>
         <span className="flex items-center justify-between gap-2 mt-0.5">
-          <span className="flex-1 min-w-0 truncate text-[13px] text-white/60">
-            {mine && c.lastMessage && <span className="text-white/50 mr-1">✓✓</span>}
+          <span className="flex-1 min-w-0 truncate text-[13px] text-[#6B7280]">
+            {mine && c.lastMessage && <span className="text-[#8A8F98] mr-1">✓✓</span>}
             {c.lastMessage?.content || 'No messages yet'}
           </span>
-          {unread && <span className="shrink-0 w-2 h-2 rounded-full bg-whatsapp-outgoing" aria-label="Unread" />}
+          {unread && <span className="shrink-0 w-2 h-2 rounded-full bg-[#CC5500]" aria-label="Unread" />}
         </span>
       </span>
     </button>
@@ -203,16 +213,16 @@ function EmptyState({
   onGroup: () => void;
 }) {
   if (filter === 'unread')
-    return <p className="text-center text-xs text-white/50 py-16 px-6">You&apos;re all caught up — no unread chats.</p>;
+    return <p className="text-center text-xs text-[#6B7280] py-16 px-6">You&apos;re all caught up — no unread chats.</p>;
   if (filter === 'groups')
     return (
-      <div className="text-center text-xs text-white/50 py-16 px-6 space-y-3">
+      <div className="text-center text-xs text-[#6B7280] py-16 px-6 space-y-3">
         <p>No groups yet.</p>
         <button className="underline opacity-70" onClick={onGroup}>Create a group…</button>
       </div>
     );
   return (
-    <div className="text-center text-xs text-white/50 py-16 space-y-3 px-6">
+    <div className="text-center text-xs text-[#6B7280] py-16 space-y-3 px-6">
       <p>No conversations yet.</p>
       <div className="flex justify-center gap-2">
         <Button size="sm" color="secondary" onPress={onNew}>Search @username</Button>
@@ -245,6 +255,24 @@ export function Sidebar({ onGhost }: { onGhost: () => void }) {
   const lastSeen = useLastSeen();
   const myNames = useMyNames();
   useWarmPeers(conversations);
+
+  // Pre-fetch presence for all direct chat peers in sidebar
+  useEffect(() => {
+    if (!conversations.length) return;
+    const peerUserIds = conversations
+      .filter((c) => c.type !== 'group')
+      .map((c) => {
+        const p = resolvePeer(c, cachedMessages[c.id] || [], user?.userId, peersSnapshot);
+        return p?.userId;
+      })
+      .filter((id): id is string => Boolean(id));
+
+    if (peerUserIds.length > 0) {
+      chatApi.batchPresence(peerUserIds).then((res) => {
+        if (res) usePresenceStore.getState().setBatchPresence(res);
+      }).catch(() => {});
+    }
+  }, [conversations, user?.userId, peersSnapshot, cachedMessages]);
 
   const unreadCount = useMemo(
     () => conversations.filter((c) => isUnreadConv(c, lastSeen, myNames)).length,
@@ -280,16 +308,16 @@ export function Sidebar({ onGhost }: { onGhost: () => void }) {
   return (
     <>
       {/* Desktop panel */}
-      <div className="w-full h-full hidden md:flex flex-col bg-whatsapp-panel overflow-hidden">
+      <div className="w-full h-full hidden md:flex flex-col bg-[#E0E5EC] overflow-hidden">
         <div className="px-4 pt-4 pb-2 space-y-3">
           <div className="flex items-center justify-between">
-            <h1 className="text-xl font-bold text-white">Chats</h1>
+            <h1 className="text-xl font-bold text-[#2F343D]">Chats</h1>
             <div className="flex items-center gap-1">
               <button
                 onClick={onGhost}
                 title="Ghost chat"
                 aria-label="Ghost chat"
-                className="p-2 rounded-full text-white/70 hover:text-white hover:bg-white/10 transition flex items-center justify-center"
+                className="p-2 rounded-full text-[#8A8F98] bg-[#E0E5EC] shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] hover:text-[#2F343D] transition flex items-center justify-center"
               >
                 <GhostIcon />
               </button>
@@ -297,7 +325,7 @@ export function Sidebar({ onGhost }: { onGhost: () => void }) {
                 onClick={() => setInviteOpen(true)}
                 title="Invite a friend"
                 aria-label="Invite a friend"
-                className="p-2 rounded-full text-white/70 hover:text-white hover:bg-white/10 transition"
+                className="p-2 rounded-full text-[#8A8F98] bg-[#E0E5EC] shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] hover:text-[#2F343D] transition"
               >
                 <InviteIcon />
               </button>
@@ -305,20 +333,20 @@ export function Sidebar({ onGhost }: { onGhost: () => void }) {
                 onClick={() => setNewOpen(true)}
                 title="New chat"
                 aria-label="New chat"
-                className="p-2 rounded-lg bg-whatsapp-outgoing text-white hover:bg-secondary transition"
+                className="p-2 rounded-full bg-[#CC5500] text-white hover:bg-[#B34A00] shadow-[4px_4px_8px_#b8bcc9,-4px_-4px_8px_#ffffff] transition"
               >
                 <ComposeIcon />
               </button>
             </div>
           </div>
-          <label className="flex items-center gap-2 bg-whatsapp-composer rounded-lg px-3 py-1.5 text-white/60 focus-within:ring-1 focus-within:ring-secondary/60">
+          <label className="flex items-center gap-2 bg-[#E0E5EC] rounded-full px-3 py-1.5 text-[#8A8F98] shadow-[inset_4px_4px_8px_#b8bcc9,inset_-4px_-4px_8px_#ffffff]">
             <SearchIcon />
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search or start a new chat"
               aria-label="Search or start a new chat"
-              className="flex-1 bg-transparent outline-none text-sm placeholder:text-white/40 text-white"
+              className="flex-1 bg-transparent outline-none text-sm placeholder:text-[#8A8F98] text-[#2F343D]"
             />
           </label>
           <FilterPills filter={filter} onChange={setFilter} unreadCount={unreadCount} />
@@ -384,16 +412,16 @@ export function MobileChats({ onGhost }: { onGhost: () => void }) {
   );
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 md:hidden bg-whatsapp-panel">
+    <div className="flex-1 flex flex-col min-h-0 md:hidden bg-[#E0E5EC]">
       <div className="px-4 pt-4 pb-2 space-y-3">
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-bold text-white">Chats</h1>
+          <h1 className="text-xl font-bold text-[#2F343D]">Chats</h1>
           <div className="flex items-center gap-1">
             <button
               onClick={onGhost}
               title="Ghost chat"
               aria-label="Ghost chat"
-              className="p-2 rounded-full text-white/70 hover:text-white hover:bg-white/10 transition flex items-center justify-center"
+              className="p-2 rounded-full text-[#8A8F98] bg-[#E0E5EC] shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] hover:text-[#2F343D] transition flex items-center justify-center"
             >
               <GhostIcon />
             </button>
@@ -401,7 +429,7 @@ export function MobileChats({ onGhost }: { onGhost: () => void }) {
               onClick={() => setInviteOpen(true)}
               title="Invite a friend"
               aria-label="Invite a friend"
-              className="p-2 rounded-full text-white/70 hover:text-white hover:bg-white/10 transition"
+              className="p-2 rounded-full text-[#8A8F98] bg-[#E0E5EC] shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] hover:text-[#2F343D] transition"
             >
               <InviteIcon />
             </button>
@@ -409,20 +437,20 @@ export function MobileChats({ onGhost }: { onGhost: () => void }) {
               onClick={() => setNewOpen(true)}
               title="New chat"
               aria-label="New chat"
-              className="p-2 rounded-lg bg-whatsapp-outgoing text-white hover:bg-secondary transition"
+              className="p-2 rounded-full bg-[#CC5500] text-white hover:bg-[#B34A00] shadow-[4px_4px_8px_#b8bcc9,-4px_-4px_8px_#ffffff] transition"
             >
               <ComposeIcon />
             </button>
           </div>
         </div>
-        <label className="flex items-center gap-2 bg-whatsapp-composer rounded-lg px-3 py-1.5 text-white/60">
+        <label className="flex items-center gap-2 bg-[#E0E5EC] rounded-full px-3 py-1.5 text-[#8A8F98] shadow-[inset_4px_4px_8px_#b8bcc9,inset_-4px_-4px_8px_#ffffff]">
           <SearchIcon />
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search or start a new chat"
             aria-label="Search or start a new chat"
-            className="flex-1 bg-transparent outline-none text-sm placeholder:text-white/40 text-white"
+            className="flex-1 bg-transparent outline-none text-sm placeholder:text-[#8A8F98] text-[#2F343D]"
           />
         </label>
         <FilterPills filter={filter} onChange={setFilter} unreadCount={unreadCount} />
@@ -439,7 +467,7 @@ export function MobileChats({ onGhost }: { onGhost: () => void }) {
           />
         ))}
         {visible.length === 0 && (
-          <p className="text-center text-xs text-white/50 py-16 px-6">
+          <p className="text-center text-xs text-[#6B7280] py-16 px-6">
             {filter === 'unread'
               ? "You're all caught up — no unread chats."
               : filter === 'groups'

@@ -54,3 +54,7 @@ server/uploads/
 test-results/
 coverage/
 web/tsconfig.tsbuildinfo
+scratch/
+resume.tex
+AWS_Cloud_Architecture_Masterclass.pdf
+

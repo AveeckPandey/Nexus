@@ -285,15 +285,15 @@ export function GhostPanel({ initialToken, onBack }: { initialToken?: string; on
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full min-w-0 bg-[#0F0E0E]">
-      <div className="flex items-center gap-3 px-4 py-2.5 bg-[#1C1917] border-b border-amber-500/20">
-        <Button size="sm" variant="light" onPress={() => { reset(); onBack(); }}>← Back</Button>
-        <b className="text-sm flex items-center gap-1.5"><GhostIcon size={14} /> Ghost chat</b>
-        <span className="text-[11px] text-amber-200/70">
+    <div className="flex-1 flex flex-col h-full min-w-0 bg-[#E0E5EC] text-[#2F343D]">
+      <div className="flex items-center gap-3 px-4 py-2.5 bg-[#E0E5EC] border-b border-[#b8bcc9]/50">
+        <Button size="sm" variant="light" className="text-[#2F343D]" onPress={() => { reset(); onBack(); }}>← Back</Button>
+        <b className="text-sm flex items-center gap-1.5 text-[#2F343D]"><GhostIcon size={14} /> Ghost chat</b>
+        <span className="text-[11px] text-[#8A8F98]">
           {formatBurn(burnSecs)} burn · E2EE · {!user ? `Guest (${currentUserName})` : user.username} · {roomId ? `room ${roomId.slice(0, 8)}…` : 'no room'}
         </span>
         {!user && (
-          <Chip size="sm" variant="flat" color="warning" className="text-[10px]">
+          <Chip size="sm" variant="flat" className="text-[10px] text-[#CC5500] bg-[#CC5500]/10 border border-[#CC5500]/20">
             Anonymous Guest
           </Chip>
         )}
@@ -305,28 +305,28 @@ export function GhostPanel({ initialToken, onBack }: { initialToken?: string; on
         )}
       </div>
 
-      <div className="m-3 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-[11px] text-amber-200/80">
+      <div className="m-3 p-3 bg-[#E9EDF3] shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] border border-white/60 rounded-xl text-[11px] text-[#8A8F98]">
         Messages self-destruct {formatBurn(burnSecs)} after opening and are encrypted end-to-end. Server stores ciphertext only, keeps no chat logs, and wipes the room on burn or End & wipe. Invites expire in 5 minutes and are one-time. No registration required!
       </div>
 
-      <div className="px-4">
-        <Tabs selectedKey={tab} onSelectionChange={(k) => setTab(k as 'chat' | 'join')}>
+      <div className="px-4 text-[#2F343D]">
+        <Tabs selectedKey={tab} onSelectionChange={(k) => setTab(k as 'chat' | 'join')} classNames={{ tabList: "bg-[#E9EDF3] shadow-[inset_4px_4px_8px_#b8bcc9,inset_-4px_-4px_8px_#ffffff]", cursor: "bg-[#CC5500]", tabContent: "text-[#8A8F98] group-data-[selected=true]:text-white" }}>
           <Tab key="chat" title="Chat" />
           <Tab key="join" title="Create / Join" />
         </Tabs>
       </div>
 
       {tab === 'join' && (
-        <Card className="m-4 bg-[#1C1917]"><CardBody className="space-y-3">
-          <Button color="warning" isLoading={busy} onPress={create}>Create 5-minute invite</Button>
+        <Card className="m-4 bg-[#E9EDF3] shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] border border-white/60 text-[#2F343D]"><CardBody className="space-y-3">
+          <Button className="bg-[#CC5500] text-white hover:bg-[#B34A00] font-semibold shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff]" isLoading={busy} onPress={create}>Create 5-minute invite</Button>
           {inviteLink && (
             <>
-              <Input label="One-time invite link (copied)" value={inviteLink} readOnly onFocus={(e) => e.target.select()} />
-              <Button variant="flat" onPress={shareGhost}>Share… (SMS, WhatsApp, email)</Button>
+              <Input label="One-time invite link (copied)" value={inviteLink} readOnly onFocus={(e) => e.target.select()} classNames={{ inputWrapper: "bg-[#E0E5EC] shadow-[inset_4px_4px_8px_#b8bcc9,inset_-4px_-4px_8px_#ffffff] border border-white/50", input: "text-[#2F343D] font-mono text-xs", label: "text-[#8A8F98]" }} />
+              <Button className="bg-[#E9EDF3] text-[#2F343D] shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] border border-white/60" variant="flat" onPress={shareGhost}>Share… (SMS, WhatsApp, email)</Button>
             </>
           )}
-          <Input label="Paste invite link or token to join" value={joinInput} onValueChange={setJoinInput} placeholder="https://nexus.app/ghost?token=…#k=…" />
-          <Button variant="flat" isLoading={busy} isDisabled={!joinInput.trim()} onPress={() => join()}>Join room</Button>
+          <Input label="Paste invite link or token to join" value={joinInput} onValueChange={setJoinInput} placeholder="https://nexus.app/ghost?token=…#k=…" classNames={{ inputWrapper: "bg-[#E0E5EC] shadow-[inset_4px_4px_8px_#b8bcc9,inset_-4px_-4px_8px_#ffffff] border border-white/50", input: "text-[#2F343D]", label: "text-[#8A8F98]" }} />
+          <Button className="bg-[#CC5500] text-white hover:bg-[#B34A00] font-semibold shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] data-[disabled=true]:opacity-50" variant="flat" isLoading={busy} isDisabled={!joinInput.trim()} onPress={() => join()}>Join room</Button>
           {error && <p className="text-xs text-danger">{error}</p>}
         </CardBody></Card>
       )}
@@ -334,15 +334,15 @@ export function GhostPanel({ initialToken, onBack }: { initialToken?: string; on
       {/* Message feed — hidden on the join tab when there is no room yet,
           so no empty box renders below the invite card. */}
       {(tab === 'chat' || roomId || messages.length > 0) && (
-      <div className="flex-1 overflow-y-auto p-4 space-y-2">
-        {!roomId && <p className="text-center text-xs text-stone-500 py-16">Create an invite or join a room to start burning messages.</p>}
+      <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-[#E0E5EC]">
+        {!roomId && <p className="text-center text-xs text-[#8A8F98] py-16">Create an invite or join a room to start burning messages.</p>}
         {messages.map((m) => {
           const me = m.senderId === currentUserId;
           return (
             <div key={m.id} className={`flex ${me ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm ${me ? 'bg-amber-950/60 border border-amber-500/40 text-amber-100 rounded-br-sm' : 'bg-stone-900 border border-amber-500/30 text-amber-100 rounded-bl-sm'}`}>
+              <div className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm bg-[#E9EDF3] text-[#2F343D] shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] border ${me ? 'border-[#CC5500]/30 rounded-br-sm' : 'border-white/60 rounded-bl-sm'}`}>
                 <p className="whitespace-pre-wrap break-words">{m.content}</p>
-                <p className="text-[10px] opacity-60 mt-1 flex items-center gap-1"><FlameIcon size={10} /> burns in {burnLeft[m.id] ?? m.burnDuration}s · <LockIcon size={10} /> encrypted</p>
+                <p className="text-[10px] text-[#8A8F98] mt-1 flex items-center gap-1"><FlameIcon size={10} /> burns in {burnLeft[m.id] ?? m.burnDuration}s · <LockIcon size={10} /> encrypted</p>
               </div>
             </div>
           );
@@ -351,18 +351,18 @@ export function GhostPanel({ initialToken, onBack }: { initialToken?: string; on
       )}
 
       {roomId && (
-        <div className="p-3 bg-[#1C1917] border-t border-amber-500/20 space-y-2">
-          <div className="flex items-center gap-1.5 text-[11px] text-amber-200/70">
+        <div className="p-3 bg-[#E0E5EC] border-t border-[#b8bcc9]/50 space-y-2">
+          <div className="flex items-center gap-1.5 text-[11px] text-[#8A8F98]">
             <span className="mr-1 flex items-center gap-1"><FlameIcon size={11} /> Burn after opening:</span>
             {BURN_OPTIONS.map((o) => (
               <button
                 key={o.s}
                 onClick={() => setBurnSecs(o.s)}
                 aria-pressed={burnSecs === o.s}
-                className={`px-2.5 py-1 rounded-full font-medium transition ${
+                className={`px-2.5 py-1 rounded-full font-medium transition shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] ${
                   burnSecs === o.s
-                    ? 'bg-amber-500 text-black'
-                    : 'bg-white/10 text-amber-100/80 hover:bg-white/15'
+                    ? 'bg-[#CC5500] text-white'
+                    : 'bg-[#E9EDF3] text-[#8A8F98] hover:text-[#2F343D] border border-white/60'
                 }`}
               >
                 {o.label}
@@ -370,7 +370,7 @@ export function GhostPanel({ initialToken, onBack }: { initialToken?: string; on
             ))}
           </div>
           <div className="flex items-center gap-2">
-            <div className="flex-1 flex items-center bg-amber-500/10 border border-amber-500/40 rounded-full px-4 py-1.5 focus-within:border-amber-400 focus-within:bg-amber-500/15 transition-colors">
+            <div className="flex-1 flex items-center bg-[#E0E5EC] shadow-[inset_4px_4px_8px_#b8bcc9,inset_-4px_-4px_8px_#ffffff] border border-white/50 rounded-full px-4 py-1.5 focus-within:border-[#CC5500]/40 transition-colors">
               <input
                 type="text"
                 placeholder={`Disappearing secret as ${currentUserName}…`}
@@ -382,10 +382,10 @@ export function GhostPanel({ initialToken, onBack }: { initialToken?: string; on
                     send();
                   }
                 }}
-                className="flex-1 bg-transparent border-none outline-none shadow-none text-sm text-amber-50 placeholder:text-amber-200/40 py-1 focus:ring-0 focus:outline-none"
+                className="flex-1 bg-transparent border-none outline-none shadow-none text-sm text-[#2F343D] placeholder:text-[#8A8F98] py-1 focus:ring-0 focus:outline-none"
               />
             </div>
-            <Button color="warning" radius="full" className="font-semibold" onPress={send} isDisabled={!text.trim()}>Send</Button>
+            <Button className="bg-[#CC5500] text-white hover:bg-[#B34A00] font-semibold shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff]" radius="full" onPress={send} isDisabled={!text.trim()}>Send</Button>
           </div>
           {error && <p className="text-xs text-danger">{error}</p>}
         </div>

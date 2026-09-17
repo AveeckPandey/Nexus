@@ -125,4 +125,38 @@ export class ChatController {
     });
     return { success: true };
   }
+
+  @Get('presence/:userId')
+  @UseGuards(CognitoAuthGuard)
+  async getUserPresence(@Param('userId') userId: string) {
+    const status = await this.chat.getPresence(userId);
+    return { success: true, userId, status };
+  }
+
+  @Post('presence/batch')
+  @UseGuards(CognitoAuthGuard)
+  async getBatchPresence(@Body() b: { userIds: string[] }) {
+    const presence = await this.chat.getBatchPresence(b?.userIds || []);
+    return { success: true, presence };
+  }
+
+  @Get('sync')
+  @UseGuards(CognitoAuthGuard)
+  async getSyncQueue(
+    @CurrentUser() u: AuthenticatedUser,
+    @Query('limit') limit?: string,
+  ) {
+    const items = await this.chat.getSyncQueue(u.userId, limit ? parseInt(limit, 10) : 50);
+    return { success: true, count: items.length, items };
+  }
+
+  @Post('sync/ack')
+  @UseGuards(CognitoAuthGuard)
+  async ackSyncQueue(
+    @CurrentUser() u: AuthenticatedUser,
+    @Body() b: { count: number },
+  ) {
+    await this.chat.ackSyncQueue(u.userId, b.count || 0);
+    return { success: true };
+  }
 }

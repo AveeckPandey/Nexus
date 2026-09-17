@@ -87,10 +87,10 @@ export function NewChatDialog({ open, onClose }: { open: boolean; onClose: () =>
 
   return (
     <Modal isOpen={open} onClose={onClose} placement="top-center">
-      <ModalContent className="bg-whatsapp-panel border border-white/10 text-white">
-        <ModalHeader className="flex flex-col gap-1">
+      <ModalContent className="bg-[#E9EDF3] text-[#2F343D] rounded-3xl shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff]">
+        <ModalHeader className="flex flex-col gap-1 text-[#2F343D]">
           <span>New chat</span>
-          <span className="text-xs font-normal text-default-500">
+          <span className="text-xs font-normal text-[#8A8F98]">
             Search by @username, name, or email — no phone number needed.
           </span>
         </ModalHeader>
@@ -101,21 +101,21 @@ export function NewChatDialog({ open, onClose }: { open: boolean; onClose: () =>
             value={q}
             onChange={(e) => setQ(e.target.value)}
             aria-label="Search by username, name, or email"
-            className="w-full bg-whatsapp-composer border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white outline-none placeholder:text-white/30 focus:border-secondary/60 transition-colors"
+            className="w-full bg-[#E0E5EC] rounded-xl px-3 py-2.5 text-sm text-[#2F343D] outline-none placeholder:text-[#8A8F98] shadow-[inset_4px_4px_8px_#b8bcc9,inset_-4px_-4px_8px_#ffffff] focus:ring-2 focus:ring-[#CC5500]/40 transition"
           />
           {searching && (
-            <div className="flex items-center gap-2 text-xs text-default-500">
+            <div className="flex items-center gap-2 text-xs text-[#8A8F98]">
               <Spinner size="sm" /> Searching…
             </div>
           )}
           {error && <p className="text-xs text-danger">{error}</p>}
           {!searching && q.trim().length >= 2 && results.length === 0 && !error && (
-            <p className="text-xs text-default-500">
+            <p className="text-xs text-[#8A8F98]">
               No one found for “{q.trim()}”. Ask them to join with your invite link instead.
             </p>
           )}
           {q.trim().length < 2 && (
-            <p className="text-xs text-default-500">
+            <p className="text-xs text-[#8A8F98]">
               Type at least 2 characters. Usernames look like @username.
             </p>
           )}
@@ -123,16 +123,16 @@ export function NewChatDialog({ open, onClose }: { open: boolean; onClose: () =>
             {results.map((u) => (
               <div
                 key={u.userId}
-                className="flex items-center gap-3 p-2 rounded-xl border border-white/10 bg-white/[0.02]"
+                className="flex items-center gap-3 p-2 rounded-xl border border-transparent bg-[#E0E5EC] text-[#2F343D] shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] hover:bg-white/60 transition"
               >
                 <Avatar src={u.avatarUrl} name={u.name || u.username} size="sm" className="shrink-0" />
                 <span className="flex-1 min-w-0">
-                  <b className="block truncate text-sm">{u.name || u.username}</b>
-                  <span className="block truncate text-xs text-default-500">@{u.username}</span>
+                  <b className="block truncate text-sm text-[#2F343D]">{u.name || u.username}</b>
+                  <span className="block truncate text-xs text-[#8A8F98]">@{u.username}</span>
                 </span>
                 <Button
                   size="sm"
-                  color="secondary"
+                  className="bg-[#CC5500] text-white rounded-xl shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff]"
                   isLoading={starting === u.userId}
                   isDisabled={starting !== null}
                   onPress={() => startChat(u)}

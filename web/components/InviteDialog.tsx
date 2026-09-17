@@ -66,40 +66,40 @@ export function InviteDialog({ open, onClose }: { open: boolean; onClose: () => 
 
   return (
     <Modal isOpen={open} onClose={onClose} placement="top-center">
-      <ModalContent>
-        <ModalHeader className="flex flex-col gap-1">
+      <ModalContent className="bg-[#E9EDF3] text-[#2F343D] rounded-3xl shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff]">
+        <ModalHeader className="flex flex-col gap-1 text-[#2F343D]">
           <span>Invite a friend</span>
-          <span className="text-xs font-normal text-default-500">
+          <span className="text-xs font-normal text-[#8A8F98]">
             One tap → they open an encrypted chat with you. No app download.
           </span>
         </ModalHeader>
         <ModalBody className="pb-6 space-y-3">
-          {loading && <p className="text-xs text-default-500">Preparing your link…</p>}
+          {loading && <p className="text-xs text-[#8A8F98]">Preparing your link…</p>}
           {error && <p className="text-xs text-danger">{error}</p>}
           {link && (
             <>
-              <Input label="Your personal invite link" value={link} readOnly onFocus={(e) => e.target.select()} />
+              <Input label="Your personal invite link" value={link} readOnly onFocus={(e) => e.target.select()} classNames={{ inputWrapper: 'bg-[#E0E5EC] shadow-[inset_4px_4px_8px_#b8bcc9,inset_-4px_-4px_8px_#ffffff] rounded-xl', input: 'text-[#2F343D]', label: 'text-[#8A8F98]' }} />
               <div className="flex gap-2">
-                <Button color="secondary" className="flex-1" onPress={share} isDisabled={!link}>
+                <Button className="flex-1 bg-[#CC5500] text-white rounded-xl shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff]" onPress={share} isDisabled={!link}>
                   Share…
                 </Button>
-                <Button variant="flat" className="flex-1" onPress={copy} isDisabled={!link}>
+                <Button variant="flat" className="flex-1 bg-[#E0E5EC] text-[#2F343D] rounded-xl shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff]" onPress={copy} isDisabled={!link}>
                   Copy link
                 </Button>
               </div>
               <div className="flex items-center gap-3 pt-1">
-                <span className="bg-white p-2 rounded-xl shrink-0">
+                <span className="bg-white p-2 rounded-xl shrink-0 shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff]">
                   <QRCode value={link} size={88} />
                 </span>
-                <p className="text-[11px] leading-5 text-default-500">
+                <p className="text-[11px] leading-5 text-[#8A8F98]">
                   In person? They scan this QR and land straight in a chat with{' '}
-                  <b>@{username}</b>. New friends sign up in ~10 seconds and the
+                  <b className="text-[#2F343D]">@{username}</b>. New friends sign up in ~10 seconds and the
                   conversation is created automatically.
                 </p>
               </div>
             </>
           )}
-          {notice && <p className="text-xs text-secondary">{notice}</p>}
+          {notice && <p className="text-xs text-[#CC5500]">{notice}</p>}
         </ModalBody>
       </ModalContent>
     </Modal>

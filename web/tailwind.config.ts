@@ -11,13 +11,21 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        neu: {
+          bg: '#E0E5EC',
+          card: '#E9EDF3',
+          ink: '#2F343D',
+          muted: '#8A8F98',
+          accent: '#CC5500',
+          accentDark: '#A34400',
+        },
         whatsapp: {
-          dark: '#14092B',
-          panel: '#1E1238',
-          composer: '#2A1D4D',
-          outgoing: '#7C3AED',
-          checkBlue: '#53BDEB',
-          checkGray: '#A79FC4',
+          dark: '#E0E5EC',
+          panel: '#E0E5EC',
+          composer: '#E0E5EC',
+          outgoing: '#CC5500',
+          checkBlue: '#CC5500',
+          checkGray: '#8A8F98',
         },
       },
       keyframes: {

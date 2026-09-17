@@ -123,11 +123,11 @@ export function Composer({ onSend, onTyping, replyPreview, onCancelReply }: Prop
   const hasText = text.trim().length > 0;
 
   return (
-    <div className="p-3 bg-whatsapp-panel border-t border-white/10">
+    <div className="p-3 bg-[#E0E5EC] border-t border-white/70">
       {replyPreview && (
-        <div className="mb-2 flex items-center justify-between text-xs bg-whatsapp-composer rounded-lg px-3 py-2 border-l-2 border-secondary">
+        <div className="mb-2 flex items-center justify-between text-xs bg-white/70 text-[#2F343D] rounded-lg px-3 py-2 border-l-4 border-[#CC5500] shadow-[4px_4px_8px_#b8bcc9,-4px_-4px_8px_#ffffff]">
           <span className="truncate">{replyPreview}</span>
-          <button className="text-whatsapp-checkGray ml-2 flex items-center" onClick={onCancelReply} aria-label="Cancel reply"><CloseIcon size={12} /></button>
+          <button className="text-[#8A8F98] hover:text-[#CC5500] ml-2 flex items-center" onClick={onCancelReply} aria-label="Cancel reply"><CloseIcon size={12} /></button>
         </div>
       )}
       <div className="flex items-end gap-2">
@@ -150,15 +150,15 @@ export function Composer({ onSend, onTyping, replyPreview, onCancelReply }: Prop
           />
         ) : (
           <>
-            <Button variant="flat" onPress={pick} isLoading={uploading} aria-label="Attach file"><ClipIcon /></Button>
+            <Button variant="flat" onPress={pick} isLoading={uploading} aria-label="Attach file" className="bg-[#E9EDF3] text-[#8A8F98] hover:text-[#CC5500] rounded-full min-w-0 w-10 h-10 p-0 shadow-[4px_4px_8px_#b8bcc9,-4px_-4px_8px_#ffffff]"><ClipIcon /></Button>
             {/* WhatsApp-style pill that expands/shrinks with content */}
-            <div className="flex-1 flex items-end gap-1 bg-whatsapp-composer border border-white/10 rounded-3xl pl-1 pr-2 py-1.5 focus-within:border-secondary/60 transition-colors">
+            <div className="flex-1 flex items-end gap-1 bg-[#E0E5EC] border border-white/70 rounded-3xl pl-1 pr-2 py-1.5 shadow-[inset_4px_4px_8px_#b8bcc9,inset_-4px_-4px_8px_#ffffff] transition-colors">
               <div className="relative">
-                <Button variant="light" size="sm" className="min-w-0 px-2" aria-label="Emoji" onPress={() => setEmojiOpen((v) => !v)}><SmileIcon /></Button>
+                <Button variant="light" size="sm" className="min-w-0 px-2 text-[#8A8F98] hover:text-[#CC5500] bg-transparent" aria-label="Emoji" onPress={() => setEmojiOpen((v) => !v)}><SmileIcon /></Button>
                 {emojiOpen && (
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setEmojiOpen(false)} />
-                    <div className="absolute bottom-full left-0 mb-2 z-50 flex gap-1 p-2 rounded-2xl bg-whatsapp-panel border border-white/15 shadow-2xl">
+                    <div className="absolute bottom-full left-0 mb-2 z-50 flex gap-1 p-2 rounded-2xl bg-[#E9EDF3] border border-white/70 shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff]">
                       {QUICK_EMOJIS.map((e) => (
                         <button key={e} className="text-xl hover:scale-125 transition-transform" onClick={() => insertEmoji(e)}>
                           {e}
@@ -181,20 +181,20 @@ export function Composer({ onSend, onTyping, replyPreview, onCancelReply }: Prop
                 }}
                 placeholder="Type a message"
                 aria-label="Type a message"
-                className="flex-1 bg-transparent resize-none outline-none text-sm placeholder:text-whatsapp-checkGray py-1.5 max-h-[132px] leading-5"
+                className="flex-1 bg-transparent resize-none outline-none text-sm text-[#2F343D] placeholder:text-[#8A8F98] py-1.5 max-h-[132px] leading-5"
                 style={{ height: 'auto', overflowY: 'hidden' }}
               />
             </div>
             {/* WhatsApp swaps mic ↔ send depending on input */}
             {hasText ? (
-              <Button color="secondary" className="font-bold rounded-full" onPress={send} aria-label="Send message"><SendIcon /></Button>
+              <Button onPress={send} aria-label="Send message" className="bg-[#CC5500] hover:bg-[#B34A00] text-white font-bold rounded-full min-w-0 w-10 h-10 p-0 shadow-[4px_4px_8px_#b8bcc9,-4px_-4px_8px_#ffffff]"><SendIcon /></Button>
             ) : (
-              <Button variant="flat" onPress={() => setRecording(true)} aria-label="Record voice note"><MicIcon /></Button>
+              <Button variant="flat" onPress={() => setRecording(true)} aria-label="Record voice note" className="bg-[#E9EDF3] text-[#8A8F98] hover:text-[#CC5500] rounded-full min-w-0 w-10 h-10 p-0 shadow-[4px_4px_8px_#b8bcc9,-4px_-4px_8px_#ffffff]"><MicIcon /></Button>
             )}
           </>
         )}
       </div>
-      <p className="mt-1 text-[10px] text-white/40 hidden sm:block">
+      <p className="mt-1 text-[10px] text-[#8A8F98] hidden sm:block">
         Enter to send · Shift+Enter for a new line · mention @nexus for Nexus AI
       </p>
     </div>

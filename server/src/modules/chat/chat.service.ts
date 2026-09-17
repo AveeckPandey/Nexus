@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { DynamoDbService } from '../dynamodb/dynamodb.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { RedisService } from '../../common/redis/redis.service';
+import { IdService } from '../../common/id/id.service';
 
 export interface ChatMessage {
   id: string;
@@ -68,6 +69,7 @@ export class ChatService {
     private readonly db: DynamoDbService,
     private readonly notifications: NotificationsService,
     @Optional() private readonly redis?: RedisService,
+    @Optional() private readonly idService?: IdService,
   ) {}
 
   async createConversation(
@@ -229,7 +231,7 @@ export class ChatService {
     e2ee?: { isEncrypted?: boolean; nonce?: string; encVersion?: number },
     senderAvatar?: string,
   ): Promise<ChatMessage> {
-    const id = uuidv4();
+    const id = this.idService ? this.idService.generate() : uuidv4();
     const now = new Date().toISOString();
     const isEncrypted = Boolean(e2ee?.isEncrypted);
     const preview = isEncrypted
@@ -270,9 +272,7 @@ export class ChatService {
       { ':m': lastMessage, ':n': now },
     );
 
-    // For 1:1 and small groups (<= 10), asynchronously refresh member previews in background.
-    // For large groups, avoids 1000s of writes; getUserConversations falls back to METADATA.
-    // Single read reused for both preview fan-out and push (saves ~1 DB read/msg).
+    // Asynchronously refresh member previews, populate client sync queues, and dispatch push
     this.getConversation(conversationId).then((conv) => {
       const participants = conv?.participants || [];
       if (participants.length && participants.length <= 10) {
@@ -287,6 +287,28 @@ export class ChatService {
           ),
         ).catch(() => {});
       }
+
+      // Sync Queues (Per-client inbox buffering for offline sync / catchup)
+      if (this.redis && participants.length) {
+        const syncItem = JSON.stringify({
+          id: msg.id,
+          conversationId,
+          senderId,
+          senderName,
+          content: preview,
+          mediaType,
+          mediaUrl,
+          createdAt: now,
+        });
+        const recipients = participants.filter((uid) => uid !== senderId);
+        Promise.all(
+          recipients.map(async (uid) => {
+            await this.redis!.lpush(`sync:inbox:${uid}`, syncItem);
+            await this.redis!.ltrim(`sync:inbox:${uid}`, 0, 499);
+          }),
+        ).catch(() => {});
+      }
+
       this.dispatchPush(
         conversationId,
         senderId,
@@ -354,6 +376,10 @@ export class ChatService {
   }
 
   async markRead(conversationId: string, userId: string, messageId: string) {
+    // Never create membership as a side effect: a blind upsert here turns
+    // any read-receipt call into a join. Callers must pass isMember first
+    // (ChatGateway.messageRead does); this check is defense in depth.
+    if (!(await this.isMember(conversationId, userId))) return;
     await this.db.update(`USER#${userId}`, `CONV#${conversationId}`, 'SET lastReadMessageId = :m', {
       ':m': messageId,
     });
@@ -379,6 +405,21 @@ export class ChatService {
     return out;
   }
 
+  async getPresence(userId: string): Promise<'online' | 'offline'> {
+    if (!this.redis) return 'offline';
+    const status = await this.redis.get(`presence:${userId}`);
+    return status === 'online' ? 'online' : 'offline';
+  }
+
+  async getBatchPresence(userIds: string[]): Promise<Record<string, 'online' | 'offline'>> {
+    const out: Record<string, 'online' | 'offline'> = {};
+    if (!userIds?.length) return out;
+    for (const uid of userIds) {
+      out[uid] = await this.getPresence(uid);
+    }
+    return out;
+  }
+
   private dispatchPush(
     conversationId: string,
     senderId: string,
@@ -398,9 +439,16 @@ export class ChatService {
         for (let i = 0; i < targets.length; i += 20) {
           const batch = targets.slice(i, i + 20);
           await Promise.allSettled(
-            batch.map((memberId) =>
-              this.notifications.sendPushNotification(memberId, senderName, body, { conversationId }),
-            ),
+            batch.map(async (memberId) => {
+              if (this.redis) {
+                const presence = await this.redis.get(`presence:${memberId}`);
+                if (presence === 'online') {
+                  // User is active on WebSocket; suppress redundant push banner
+                  return;
+                }
+              }
+              return this.notifications.sendPushNotification(memberId, senderName, body, { conversationId });
+            }),
           );
         }
       } catch (err: any) {
@@ -415,5 +463,31 @@ export class ChatService {
         } catch {}
       }
     });
+  }
+
+  /**
+   * Retrieves pending messages from the user's dedicated Sync Queue (Redis inbox).
+   * Implements the 'Sync Queues' component from enterprise architecture.
+   */
+  async getSyncQueue(userId: string, limit = 50): Promise<any[]> {
+    if (!this.redis) return [];
+    const raw = await this.redis.lrange(`sync:inbox:${userId}`, 0, Math.min(limit, 100) - 1);
+    return raw
+      .map((r) => {
+        try {
+          return JSON.parse(r);
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
+  }
+
+  /**
+   * Acknowledges and clears processed messages from the user's Sync Queue.
+   */
+  async ackSyncQueue(userId: string, count: number): Promise<void> {
+    if (!this.redis || count <= 0) return;
+    await this.redis.ltrim(`sync:inbox:${userId}`, count, -1);
   }
 }

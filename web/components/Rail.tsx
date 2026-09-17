@@ -26,15 +26,15 @@ function RailButton({
       title={title}
       aria-label={title}
       aria-pressed={active}
-      className={`relative w-11 h-11 rounded-2xl flex items-center justify-center transition ${
+      className={`relative w-11 h-11 rounded-full flex items-center justify-center transition ${
         active
-          ? 'bg-whatsapp-outgoing text-white shadow-lg'
+          ? 'bg-[#CC5500] text-white shadow-[4px_4px_8px_#b8bcc9,-4px_-4px_8px_#ffffff]'
           : accent
-            ? 'bg-gradient-to-br from-cyan-500/25 to-secondary/30 text-cyan-200 hover:from-cyan-500/35 hover:to-secondary/45 border border-cyan-500/30'
-            : 'text-white/60 hover:text-white hover:bg-white/10'
+            ? 'bg-[#E0E5EC] text-[#CC5500] shadow-[inset_4px_4px_8px_#b8bcc9,inset_-4px_-4px_8px_#ffffff]'
+            : 'text-[#8A8F98] hover:text-[#2F343D] hover:bg-[#E0E5EC] hover:shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff]'
       }`}
     >
-      {active && <span className="absolute -left-[13px] w-1 h-6 rounded-full bg-secondary" aria-hidden />}
+      {active && <span className="absolute -left-[13px] w-1 h-6 rounded-full bg-[#CC5500]" aria-hidden />}
       <span aria-hidden className="flex items-center justify-center [&>svg]:w-5 [&>svg]:h-5">{icon}</span>
     </button>
   );
@@ -59,7 +59,7 @@ export function Rail({
   return (
     <nav
       aria-label="Primary"
-      className="hidden md:flex flex-col items-center gap-1.5 w-[60px] shrink-0 h-full py-3 bg-whatsapp-panel border-r border-white/10"
+      className="hidden md:flex flex-col items-center gap-1.5 w-[60px] shrink-0 h-full py-3 bg-[#E0E5EC] border-r border-white/60 shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff]"
     >
       <RailButton icon={<ChatIcon />} title="Chats" active={view === 'chat'} onClick={() => onNavigate('chat')} />
       <RailButton icon={<PlusIcon />} title="New chat" onClick={onNewChat} />
@@ -77,12 +77,12 @@ export function Rail({
         onClick={() => onNavigate('profile')}
         title="Profile"
         aria-label="Profile"
-        className={`relative rounded-full transition ring-2 ring-offset-2 ring-offset-whatsapp-panel ${
-          view === 'profile' ? 'ring-secondary' : 'ring-transparent hover:ring-white/20'
+        className={`relative rounded-full transition ring-2 ring-offset-2 ring-offset-[#E0E5EC] ${
+          view === 'profile' ? 'ring-[#CC5500]' : 'ring-[#E0E5EC] hover:ring-white/60'
         }`}
       >
         <Avatar src={user?.avatarUrl} name={user?.name || user?.username} size="md" />
-        <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-400 border-2 border-whatsapp-panel" aria-hidden />
+        <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-[#22C55E] border-2 border-[#E0E5EC]" aria-hidden />
       </button>
     </nav>
   );

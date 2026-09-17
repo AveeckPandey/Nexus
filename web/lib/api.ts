@@ -12,6 +12,11 @@ export function setTokens(t: string | null, r?: string | null) {
   if (r !== undefined) refreshToken = r;
 }
 
+/** Current bearer token (for raw fetch/axios calls that bypass the interceptor). */
+export function getToken(): string | null {
+  return token;
+}
+
 api.interceptors.request.use((config) => {
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
@@ -68,6 +73,9 @@ export interface PublicUser {
   avatarUrl?: string;
   about?: string;
   x25519PublicKey?: string | null;
+  /** Client-only: true when resolved from the server directory (spoof-proof).
+   * Message-derived placeholders are unverified and never overwrite these. */
+  verified?: boolean;
 }
 
 export const authApi = {
@@ -121,6 +129,10 @@ export const chatApi = {
     api.get(`/api/chat/conversations/${id}/read`).then((r) => r.data.cursors as Record<string, string>),
   putKey: (id: string, body: { recipientId: string; encryptedKey: string; nonce: string; senderPub: string; keyVersion?: number }) =>
     api.post(`/api/chat/conversations/${id}/key`, body).then((r) => r.data),
+  presence: (userId: string) =>
+    api.get(`/api/chat/presence/${encodeURIComponent(userId)}`).then((r) => r.data.status as 'online' | 'offline'),
+  batchPresence: (userIds: string[]) =>
+    api.post('/api/chat/presence/batch', { userIds }).then((r) => r.data.presence as Record<string, 'online' | 'offline'>),
 };
 
 export const ghostApi = {
@@ -160,7 +172,11 @@ export const mediaApi = {
   async upload(file: File): Promise<string> {
     const ext = file.name.includes('.') ? file.name.split('.').pop()! : 'bin';
     const { uploadUrl, mediaUrl } = await this.presigned(file.type, ext);
-    await axios.put(uploadUrl, file, { headers: { 'Content-Type': file.type } });
+    // The local-upload fallback route is authenticated: attach the bearer
+    // token (S3 presigned PUTs ignore unknown headers).
+    const headers: Record<string, string> = { 'Content-Type': file.type };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    await axios.put(uploadUrl, file, { headers });
     return mediaUrl as string;
   },
 };

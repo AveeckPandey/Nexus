@@ -29,3 +29,8 @@ process.env.AWS_SECRET_ACCESS_KEY = '';
 process.env.AWS_REGION = '';
 process.env.DYNAMODB_ENDPOINT = '';
 process.env.GROQ_API_KEY = '';
+process.env.REDIS_URL = '';
+process.env.REDIS_CLUSTER_URLS = '';
+// Explicit opt-in for the local-dev auth fallback (AuthService fails closed
+// in production without ALLOW_DEV_AUTH=true). Tests exercise dev auth.
+process.env.ALLOW_DEV_AUTH = 'true';

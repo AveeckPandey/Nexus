@@ -5,7 +5,8 @@
 html,
 body {
   height: 100%;
-  background: #14092b;
+  background: #E0E5EC;
+  color: #2F343D;
 }
 
 /* Slim scrollbars for chat panes */
@@ -14,63 +15,52 @@ body {
   height: 6px;
 }
 *::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.16);
+  background: #b8bcc9;
   border-radius: 999px;
 }
 *::-webkit-scrollbar-track {
   background: transparent;
 }
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #b8bcc9 transparent;
+}
 
-/* ---- Liquid glassmorphism ----
-   Step 1 (Glass Base + blurred edge stroke)  -> .glass-edge gradient border
-   Step 2 (edge refraction bend)              -> .glass-refract inner band
-   Step 3 (frosted backdrop blur + milky lift)-> .glass-shell / .glass-inner backdrop-filter */
+/* ---- Neumorphism (legacy .glass-* selectors kept as aliases) ----
+   No backdrop-filter, no transparency, no gradients, no dark backgrounds. */
 .glass-shell {
   position: relative;
-  -webkit-backdrop-filter: blur(28px) saturate(1.5) brightness(1.08);
-  backdrop-filter: blur(28px) saturate(1.5) brightness(1.08);
+  background: #E0E5EC;
   box-shadow:
-    0 40px 120px -20px rgba(0, 0, 0, 0.8),
-    0 0 80px -30px rgba(124, 58, 237, 0.5),
-    inset 0 1px 0 rgba(255, 255, 255, 0.14),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.35);
+    6px 6px 12px #b8bcc9,
+    -6px -6px 12px #ffffff;
 }
-/* Top specular — soft milky light falling from the top edge */
+/* Neutralize old specular highlight */
 .glass-shell::before {
   content: '';
   position: absolute;
-  inset: 0 0 auto 0;
-  height: 42%;
+  inset: 0;
   border-radius: inherit;
-  background: radial-gradient(120% 90% at 50% 0%, rgba(255, 255, 255, 0.12), transparent 60%);
+  background: transparent;
   pointer-events: none;
   z-index: 5;
 }
-/* Luminous edge: bright top-left, violet mid-band, like a blurred white stroke */
+/* Neumorphic edge: solid light border + raised shadow */
 .glass-edge {
-  border: 1px solid transparent;
-  background:
-    linear-gradient(155deg, rgba(38, 24, 76, 0.6) 0%, rgba(18, 11, 41, 0.64) 45%, rgba(13, 8, 34, 0.7) 100%)
-      padding-box,
-    linear-gradient(
-        140deg,
-        rgba(255, 255, 255, 0.3),
-        rgba(255, 255, 255, 0.05) 26%,
-        rgba(167, 139, 250, 0.38) 52%,
-        rgba(255, 255, 255, 0.08) 76%,
-        rgba(255, 255, 255, 0.22)
-      )
-      border-box;
+  border: 1px solid #FFFFFF;
+  background: #E0E5EC;
+  box-shadow:
+    6px 6px 12px #b8bcc9,
+    -6px -6px 12px #ffffff;
 }
 .glass-edge-soft {
-  border: 1px solid transparent;
-  background:
-    linear-gradient(160deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.015) 40%, rgba(139, 92, 246, 0.06))
-      padding-box,
-    linear-gradient(140deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.04) 30%, rgba(167, 139, 250, 0.28) 55%, rgba(255, 255, 255, 0.1))
-      border-box;
+  border: 1px solid #FFFFFF;
+  background: #E9EDF3;
+  box-shadow:
+    4px 4px 8px #b8bcc9,
+    -4px -4px 8px #ffffff;
 }
-/* Inner refraction band — bright inner lip + deep lower bounce, hugging the edge */
+/* Inner refraction band — redefined as subtle inset lip */
 .glass-refract {
   position: relative;
 }
@@ -80,46 +70,65 @@ body {
   inset: 5px;
   border-radius: inherit;
   box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
-    inset 0 14px 30px -20px rgba(255, 255, 255, 0.4),
-    inset 0 -16px 32px -22px rgba(0, 0, 0, 0.65);
+    inset 2px 2px 4px #b8bcc9,
+    inset -2px -2px 4px #ffffff;
   pointer-events: none;
   z-index: 5;
 }
-/* Frosted inner card */
+/* Frosted inner card -> neumorphic card */
 .glass-inner {
-  -webkit-backdrop-filter: blur(22px) saturate(1.4) brightness(1.06);
-  backdrop-filter: blur(22px) saturate(1.4) brightness(1.06);
+  background: #E9EDF3;
   box-shadow:
-    0 24px 70px -30px rgba(0, 0, 0, 0.8),
-    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    6px 6px 12px #b8bcc9,
+    -6px -6px 12px #ffffff;
 }
-/* Small glass tiles / chips / inputs */
+/* Small neu tiles / chips / inputs */
 .glass-tile {
-  background: linear-gradient(150deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.02));
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
+  background: #E9EDF3;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.16),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.35),
-    0 8px 20px -12px rgba(0, 0, 0, 0.7);
+    4px 4px 8px #b8bcc9,
+    -4px -4px 8px #ffffff;
 }
 .glass-chip {
-  background: linear-gradient(150deg, rgba(139, 92, 246, 0.16), rgba(139, 92, 246, 0.05));
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
+  background: #E0E5EC;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.16),
-    0 0 24px -8px rgba(139, 92, 246, 0.5);
+    inset 4px 4px 8px #b8bcc9,
+    inset -4px -4px 8px #ffffff;
 }
 .glass-input {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.015)),
-    rgba(26, 19, 53, 0.55);
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
+  background: #E0E5EC;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.1),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.3);
+    inset 4px 4px 8px #b8bcc9,
+    inset -4px -4px 8px #ffffff;
 }
 
+/* ---- Neumorphic utilities ---- */
+.neu-raised {
+  background: #E0E5EC;
+  box-shadow:
+    6px 6px 12px #b8bcc9,
+    -6px -6px 12px #ffffff;
+}
+
+.neu-inset {
+  background: #E0E5EC;
+  box-shadow:
+    inset 4px 4px 8px #b8bcc9,
+    inset -4px -4px 8px #ffffff;
+}
+
+.neu-btn-accent {
+  background: #CC5500;
+  color: #FFFFFF;
+  box-shadow:
+    4px 4px 8px #b8bcc9,
+    -4px -4px 8px #ffffff;
+}
+
+.neu-btn-accent:hover {
+  background: #B34A00;
+}
+
+.neu-text-muted {
+  color: #6B7280;
+}

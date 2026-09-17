@@ -1,4 +1,4 @@
-﻿import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import Redis, { Cluster } from 'ioredis';
 
 type RedisClient = Redis | Cluster;
@@ -9,6 +9,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   private client: RedisClient | null = null;
   private readonly memoryFallback = new Map<string, { value: string; expiresAt?: number }>();
   private readonly zsetFallback = new Map<string, Map<string, number>>();
+  private readonly hashFallback = new Map<string, Map<string, string>>();
   private readonly MAX_FALLBACK_ITEMS = 2000;
 
   private evictFallbackIfNeeded(): void {
@@ -174,6 +175,67 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     return count;
   }
 
+  async hset(key: string, field: string, value: string): Promise<number> {
+    if (this.client) {
+      try {
+        return await this.client.hset(key, field, value);
+      } catch (err) {}
+    }
+    let m = this.hashFallback.get(key);
+    if (!m) {
+      m = new Map<string, string>();
+      this.hashFallback.set(key, m);
+    }
+    const isNew = !m.has(field);
+    m.set(field, value);
+    return isNew ? 1 : 0;
+  }
+
+  async hget(key: string, field: string): Promise<string | null> {
+    if (this.client) {
+      try {
+        return await this.client.hget(key, field);
+      } catch (err) {}
+    }
+    const m = this.hashFallback.get(key);
+    return m?.get(field) ?? null;
+  }
+
+  async hdel(key: string, ...fields: string[]): Promise<number> {
+    if (this.client) {
+      try {
+        return await this.client.hdel(key, ...fields);
+      } catch (err) {}
+    }
+    const m = this.hashFallback.get(key);
+    if (!m) return 0;
+    let count = 0;
+    for (const f of fields) {
+      if (m.delete(f)) count++;
+    }
+    return count;
+  }
+
+  async hgetall(key: string): Promise<Record<string, string>> {
+    if (this.client) {
+      try {
+        return await this.client.hgetall(key);
+      } catch (err) {}
+    }
+    const m = this.hashFallback.get(key);
+    if (!m) return {};
+    return Object.fromEntries(m.entries());
+  }
+
+  async mget(...keys: string[]): Promise<(string | null)[]> {
+    if (this.client && keys.length) {
+      try {
+        return await this.client.mget(...keys);
+      } catch (err) {}
+    }
+    return Promise.all(keys.map((k) => this.get(k)));
+  }
+
   /** Atomic counter for shared rate-limiting (multi-pod). Falls back to memory. */
   async incr(key: string): Promise<number> {
     if (this.client) {
@@ -226,6 +288,50 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     arr.unshift(...values);
     if (arr.length > 2000) arr.length = 2000;
     this.listFallback.set(key, arr);
+    return arr.length;
+  }
+
+  async rpop(key: string): Promise<string | null> {
+    if (this.client) {
+      try {
+        return await this.client.rpop(key);
+      } catch {}
+    }
+    const arr = this.listFallback.get(key) || [];
+    const item = arr.pop();
+    return item ?? null;
+  }
+
+  async lrange(key: string, start: number, stop: number): Promise<string[]> {
+    if (this.client) {
+      try {
+        return await this.client.lrange(key, start, stop);
+      } catch {}
+    }
+    const arr = this.listFallback.get(key) || [];
+    const end = stop < 0 ? arr.length + stop + 1 : stop + 1;
+    return arr.slice(start, end);
+  }
+
+  async ltrim(key: string, start: number, stop: number): Promise<'OK'> {
+    if (this.client) {
+      try {
+        return await this.client.ltrim(key, start, stop);
+      } catch {}
+    }
+    const arr = this.listFallback.get(key) || [];
+    const end = stop < 0 ? arr.length + stop + 1 : stop + 1;
+    this.listFallback.set(key, arr.slice(start, end));
+    return 'OK';
+  }
+
+  async llen(key: string): Promise<number> {
+    if (this.client) {
+      try {
+        return await this.client.llen(key);
+      } catch {}
+    }
+    const arr = this.listFallback.get(key) || [];
     return arr.length;
   }
 

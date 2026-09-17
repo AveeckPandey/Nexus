@@ -61,7 +61,8 @@ async function ensureBenchmarkCluster() {
     execSync(
       `docker run -d --name ${SERVER_CONTAINER} --network ${NETWORK_NAME} ` +
       `-v "${WORKSPACE_DIR}/server:/app" -w /app ` +
-      `-e PORT=${SERVER_PORT} -e SESSION_JWT_SECRET=nexus_local_dev_session_jwt_secret_32plus_chars ` +
+       `-e PORT=${SERVER_PORT} -e SESSION_JWT_SECRET=nexus_local_dev_session_jwt_secret_32plus_chars ` +
+       `-e ALLOW_BENCHMARK_AUTH=true ` +
       `-e NODE_ENV=development --ulimit nofile=1048576:1048576 ` +
       `-p ${SERVER_PORT}:${SERVER_PORT} node:20-alpine ` +
       `node --max-old-space-size=7168 dist/main`,

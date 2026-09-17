@@ -6,11 +6,12 @@ import { Button, Spinner, Avatar } from '@heroui/react';
 import { Theme } from 'emoji-picker-react';
 import { chatApi, aiApi } from '@/lib/api';
 import { getSocket, emitWithOfflineQueue } from '@/lib/socket';
-import { encryptText, decryptText, ensureConversationKey, exportConversationKey } from '@/lib/e2ee';
+import { encryptText, decryptText, ensureConversationKey, exportConversationKey, getConversationKey } from '@/lib/e2ee';
 import { fetchAndImportKey, sealKeysForConversation } from '@/lib/keyx';
 import { useChatStore } from '@/store/chat';
 import { useAuthStore } from '@/store/auth';
 import { usePeerStore, learnPeerFromMessage, ensurePeer } from '@/store/peers';
+import { usePresenceStore } from '@/store/presence';
 import { resolvePeer, displayTitle } from '@/lib/conversation';
 import { buildAlbumIndex, type Album } from '@/lib/album';
 import { Composer } from './Composer';
@@ -51,7 +52,7 @@ import type { Message } from '@/lib/types';
 
 const EmojiPicker = dynamic(() => import('emoji-picker-react'), {
   ssr: false,
-  loading: () => <div className="p-3 text-xs text-whatsapp-checkGray">Loading emojis…</div>,
+  loading: () => <div className="p-3 text-xs text-[#8A8F98]">Loading emojis…</div>,
 });
 
 const MISSING = '🔒 Encrypted — key missing on this device';
@@ -85,7 +86,7 @@ function displayOf(convId: string, m: Message): Message {
   return m;
 }
 /** Audio player with deterministic mini-waveform, progress and 1×/1.5×/2× speed. */
-function AudioMessage({ src, seed }: { src: string; seed: string }) {
+function AudioMessage({ src, seed, dark }: { src: string; seed: string; dark?: boolean }) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [speed, setSpeed] = useState<(typeof SPEEDS)[number]>(1);
   const [progress, setProgress] = useState(0);
@@ -112,7 +113,7 @@ function AudioMessage({ src, seed }: { src: string; seed: string }) {
         onEnded={() => setProgress(1)}
       />
       <button
-        className="w-9 h-9 shrink-0 rounded-full bg-white/15 text-base flex items-center justify-center"
+        className={`w-9 h-9 shrink-0 rounded-full text-base flex items-center justify-center transition shadow-[4px_4px_8px_#b8bcc9,-4px_-4px_8px_#ffffff] ${dark ? 'bg-white text-[#CC5500] hover:bg-white/90' : 'bg-[#CC5500] text-white hover:bg-[#B34A00]'}`}
         aria-label="Play voice note"
         onClick={() => {
           const a = audioRef.current;
@@ -127,7 +128,7 @@ function AudioMessage({ src, seed }: { src: string; seed: string }) {
         {bars.map((b, i) => (
           <span
             key={i}
-            className={`flex-1 rounded ${i / bars.length <= progress ? 'bg-white' : 'bg-white/30'}`}
+            className={`flex-1 rounded ${i / bars.length <= progress ? (dark ? 'bg-white' : 'bg-[#CC5500]') : dark ? 'bg-white/40' : 'bg-[#b8bcc9]'}`}
             style={{ height: `${b}px` }}
           />
         ))}
@@ -140,7 +141,7 @@ function AudioMessage({ src, seed }: { src: string; seed: string }) {
               setSpeed(s);
               if (audioRef.current) audioRef.current.playbackRate = s;
             }}
-            className={`text-[10px] px-1.5 py-0.5 rounded ${speed === s ? 'bg-white/25 font-bold' : 'opacity-60'}`}
+            className={`text-[10px] px-1.5 py-0.5 rounded ${speed === s ? (dark ? 'bg-white/30 text-white font-bold' : 'bg-[#CC5500]/15 text-[#CC5500] font-bold') : dark ? 'text-white/70' : 'text-[#8A8F98]'}`}
           >
             {s}×
           </button>
@@ -161,14 +162,14 @@ function RichLine({ text }: { text: string }) {
       {parts.map((p, i) => {
         if (p.startsWith('**') && p.endsWith('**') && p.length > 4) {
           return (
-            <b key={i} className="font-semibold text-white">
+            <b key={i} className="font-semibold">
               {p.slice(2, -2)}
             </b>
           );
         }
         if (p.startsWith('`') && p.endsWith('`') && p.length > 2) {
           return (
-            <code key={i} className="px-1 py-0.5 rounded bg-black/40 border border-white/10 font-mono text-[11px] text-cyan-200">
+            <code key={i} className="px-1 py-0.5 rounded bg-[#E0E5EC] border border-white/70 font-mono text-[11px] text-[#CC5500]">
               {p.slice(1, -1)}
             </code>
           );
@@ -183,7 +184,7 @@ function RichLine({ text }: { text: string }) {
 export function SummaryBody({ text }: { text: string }) {
   const lines = text.split('\n');
   return (
-    <div className="mt-1.5 space-y-1.5 text-[13px] leading-relaxed text-white/85">
+    <div className="mt-1.5 space-y-1.5 text-[13px] leading-relaxed text-[#2F343D]">
       {lines.map((raw, i) => {
         const line = raw.trim();
         if (!line) return null;
@@ -191,7 +192,7 @@ export function SummaryBody({ text }: { text: string }) {
         if (bullet) {
           return (
             <div key={i} className="flex gap-2.5">
-              <span className="mt-[7px] w-1.5 h-1.5 shrink-0 rounded-full bg-secondary" aria-hidden />
+              <span className="mt-[7px] w-1.5 h-1.5 shrink-0 rounded-full bg-[#CC5500]" aria-hidden />
               <p className="flex-1 min-w-0">
                 <RichLine text={bullet[2]} />
               </p>
@@ -202,7 +203,7 @@ export function SummaryBody({ text }: { text: string }) {
         if (ordered) {
           return (
             <div key={i} className="flex gap-2.5">
-              <span className="shrink-0 font-semibold text-secondary" aria-hidden>
+              <span className="shrink-0 font-semibold text-[#CC5500]" aria-hidden>
                 {ordered[1]}
               </span>
               <p className="flex-1 min-w-0">
@@ -213,7 +214,7 @@ export function SummaryBody({ text }: { text: string }) {
         }
         const heading = line.match(/^#{1,4}\s+(.*)$/);
         return (
-          <p key={i} className={heading ? 'font-semibold text-white pt-1' : ''}>
+          <p key={i} className={heading ? 'font-semibold text-[#2F343D] pt-1' : ''}>
             <RichLine text={heading ? heading[1] : line} />
           </p>
         );
@@ -283,7 +284,7 @@ function AlbumView({
           onClick={onToggleSelect}
           aria-label="Select album"
           className={`shrink-0 w-5 h-5 mb-2 rounded-md border flex items-center justify-center text-xs ${
-            allSelected ? 'bg-secondary border-secondary text-white' : 'border-white/30 text-transparent'
+            allSelected ? 'bg-[#CC5500] border-[#CC5500] text-white' : 'bg-[#E9EDF3] border-[#b8bcc9] text-transparent shadow-[inset_2px_2px_4px_#b8bcc9,inset_-2px_-2px_4px_#ffffff]'
           }`}
         >
           ✓
@@ -291,12 +292,12 @@ function AlbumView({
       )}
       <div
         onContextMenu={(e) => onTileContext(e, first)}
-        className={`relative w-[300px] max-w-[72vw] rounded-2xl overflow-hidden p-1 shadow-sm ${
-          me ? 'bg-whatsapp-outgoing rounded-br-sm' : 'bg-whatsapp-composer rounded-bl-sm'
+        className={`relative w-[300px] max-w-[72vw] rounded-2xl overflow-hidden p-1 ${
+          me ? 'bg-[#CC5500] text-white rounded-br-md shadow-[5px_5px_10px_#b8bcc9]' : 'bg-[#E9EDF3] text-[#2F343D] rounded-bl-md border border-white/70 shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff]'
         }`}
       >
         {(starred || pinned) && (
-          <div className="flex items-center gap-1.5 px-2 pt-1.5 text-[10px] text-amber-300/90">
+          <div className={`flex items-center gap-1.5 px-2 pt-1.5 text-[10px] ${me ? 'text-white/90' : 'text-[#CC5500]'}`}>
             {starred && <span title="Starred" className="flex items-center gap-0.5"><StarIcon size={10} /> starred</span>}
             {pinned && <span title="Pinned" className="flex items-center gap-0.5"><PinIcon size={10} /> pinned</span>}
           </div>
@@ -311,7 +312,7 @@ function AlbumView({
                   e.stopPropagation();
                   onTileContext(e, t);
                 }}
-                className={`relative group/tile overflow-hidden bg-black/20 ${wideFirst && idx === 0 ? 'col-span-2 aspect-[2/1]' : 'aspect-square'}`}
+                className={`relative group/tile overflow-hidden ${me ? 'bg-white/20' : 'bg-[#E0E5EC]'} ${wideFirst && idx === 0 ? 'col-span-2 aspect-[2/1]' : 'aspect-square'}`}
               >
                 <img
                   src={t.mediaUrl}
@@ -323,7 +324,7 @@ function AlbumView({
                 <button
                   aria-label="Photo options"
                   onClick={(e) => onTileChevron(e, t)}
-                  className="absolute top-0 right-0 z-10 pl-6 pr-1.5 py-0.5 text-white/80 leading-none transition-opacity bg-gradient-to-l from-black/60 to-transparent opacity-0 group-hover/tile:opacity-100 hover:text-white flex items-center"
+                  className={`absolute top-0 right-0 z-10 pl-6 pr-1.5 py-0.5 leading-none transition-opacity opacity-0 group-hover/tile:opacity-100 flex items-center ${me ? 'text-white/80 bg-gradient-to-l from-[#CC5500] to-transparent hover:text-white' : 'text-[#8A8F98] bg-gradient-to-l from-[#E9EDF3] to-transparent hover:text-[#CC5500]'}`}
                 >
                   <ChevronDownIcon size={14} />
                 </button>
@@ -337,7 +338,7 @@ function AlbumView({
                           onReact(t, g.emoji);
                         }}
                         title={`${g.users.join(', ')} reacted with ${g.emoji}`}
-                        className="flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-black/65 border border-white/20"
+                        className="flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-[#E9EDF3] border border-white/70 text-[#2F343D] shadow-[3px_3px_6px_#b8bcc9,-3px_-3px_6px_#ffffff]"
                       >
                         <span>{g.emoji}</span>
                         <span>{g.count}</span>
@@ -347,7 +348,7 @@ function AlbumView({
                 )}
                 {extra > 0 && idx === shown.length - 1 && (
                   <button
-                    className="absolute inset-0 bg-black/60 text-white text-2xl font-bold flex items-center justify-center"
+                    className="absolute inset-0 bg-[#E0E5EC]/80 text-[#2F343D] text-2xl font-bold flex items-center justify-center"
                     onClick={() => onOpen(urls, album.msgs.indexOf(t))}
                     aria-label={`Show ${extra} more photos`}
                   >
@@ -361,9 +362,9 @@ function AlbumView({
         {album.caption && <p className="whitespace-pre-wrap break-words text-sm px-2 pt-1.5">{album.caption}</p>}
         <div className="flex items-center justify-end gap-1 px-2 pb-1 pt-0.5">
   {encrypted && <span title="Encrypted" className="flex items-center opacity-70"><LockIcon size={10} /></span>}
-          <span className="text-[10px] opacity-60">{time}</span>
+          <span className={`text-[10px] ${me ? 'text-white/80' : 'text-[#8A8F98]'}`}>{time}</span>
           {me && (
-            <span className={`text-[10px] ${status === 'read' ? 'text-whatsapp-checkBlue' : 'opacity-60'}`}>
+            <span className={`text-[10px] ${status === 'read' ? 'text-white font-bold' : 'text-white/70'}`}>
               {status === 'read' ? '✓✓' : '✓'}
             </span>
           )}
@@ -504,7 +505,16 @@ export function ChatWindow({ conversationId, onCall }: { conversationId: string;
   }, [messages, user?.userId]);
   const convAvatar = peer?.avatarUrl || fallbackAvatar;
 
-  // Learn real profile photos from message history, then refresh via public profiles.
+  const peerUserId = peer?.userId;
+  const isPeerOnline = usePresenceStore((s) => (peerUserId ? s.presence[peerUserId]?.status === 'online' : false));
+  const peerLastSeen = usePresenceStore((s) => (peerUserId ? s.presence[peerUserId]?.lastSeen : undefined));
+
+  useEffect(() => {
+    if (!peerUserId) return;
+    chatApi.presence(peerUserId).then((status) => {
+      usePresenceStore.getState().setPresence(peerUserId, status);
+    }).catch(() => {});
+  }, [peerUserId]);
   useEffect(() => {
     const seen = new Set<string>();
     for (const m of raw) {
@@ -528,10 +538,17 @@ export function ChatWindow({ conversationId, onCall }: { conversationId: string;
     setCursor(null);
     setHasMore(false);
     setQuery('');
-    // Envelope first (auto key exchange), local key as fallback for creators.
+    // Envelope first (auto key exchange). NEVER auto-generate a key when the
+    // envelope is missing: a fresh local key would split-brain the room —
+    // this device could neither read history nor be read by members. The
+    // composer blocks encrypted sends until the shared key arrives, and the
+    // UI shows the missing-key notice instead.
     fetchAndImportKey(conversationId)
       .catch(() => false)
-      .then(() => ensureConversationKey(conversationId).catch(() => {}))
+      .then((hasSharedKey) => {
+        if (!hasSharedKey) return;
+        return ensureConversationKey(conversationId).catch(() => {});
+      })
       .then(() => {
         const c = useChatStore.getState().conversations.find((x) => x.id === conversationId);
         const self = useAuthStore.getState().user?.userId;
@@ -721,6 +738,14 @@ export function ChatWindow({ conversationId, onCall }: { conversationId: string;
     // Exceptions (plaintext by necessity): media payloads (S3 URLs) and
     // @nexus/@ai prompts (the AI engine cannot read ciphertext).
     if (!opts?.mediaUrl && !isAiPrompt) {
+      // Key gate: encryptText would silently GENERATE a fresh key when none
+      // exists, split-braining the room (unreadable history + unreadable new
+      // messages). Refuse instead and point at the missing-key notice.
+      if (!getConversationKey(conversationId)) {
+        setNotice('Waiting for the conversation key — message not sent.');
+        setTimeout(() => setNotice(null), 3000);
+        return;
+      }
       try {
         const enc = await encryptText(conversationId, text);
         const optimistic: Message = {
@@ -811,6 +836,13 @@ export function ChatWindow({ conversationId, onCall }: { conversationId: string;
     let nonce: string | undefined;
     let encVersion: number | undefined;
     if (!m.mediaUrl && m.mediaType === 'text') {
+      // Same key gate as send(): never forward-encrypt into a room whose
+      // shared key this device does not hold.
+      if (!getConversationKey(targetId)) {
+        setNotice('Waiting for the conversation key — message not forwarded.');
+        setTimeout(() => setNotice(null), 3000);
+        return;
+      }
       try {
         const enc = await encryptText(targetId, m.content);
         content = enc.ciphertext;
@@ -993,29 +1025,43 @@ export function ChatWindow({ conversationId, onCall }: { conversationId: string;
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full min-w-0 bg-whatsapp-dark">
-      <div className="relative flex items-center gap-3 px-4 py-2.5 bg-whatsapp-panel border-b border-white/10">
+    <div className="flex-1 flex flex-col h-full min-w-0 bg-[#E0E5EC]">
+      <div className="relative flex items-center gap-3 px-4 py-2.5 bg-[#E0E5EC] border-b border-white/70">
         <button
           onClick={() => setPeerOpen(true)}
           aria-label="View profile"
           title="View profile"
-          className="flex items-center gap-3 flex-1 min-w-0 text-left rounded-lg hover:bg-white/5 p-1 -m-1 transition"
+          className="flex items-center gap-3 flex-1 min-w-0 text-left rounded-lg hover:bg-[#E9EDF3] p-1 -m-1 transition"
         >
-          <Avatar src={convAvatar} name={title} size="sm" />
+          <div className="relative shrink-0">
+            <Avatar src={convAvatar} name={title} size="sm" className="ring-2 ring-white shadow-[4px_4px_8px_#b8bcc9,-4px_-4px_8px_#ffffff]" />
+            {conv?.type !== 'group' && isPeerOnline && (
+              <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 border border-[#E0E5EC]" title="Online" />
+            )}
+          </div>
           <span className="flex-1 min-w-0">
-            <b className="block truncate text-sm">{title}</b>
+            <b className="block truncate text-sm text-[#2F343D]">{title}</b>
             {typingNames.length > 0 ? (
-              <span className="flex items-center text-[11px] text-emerald-300 truncate">
+              <span className="flex items-center text-[11px] text-[#8A8F98] truncate">
                 <span className="truncate">
                   {typingNames.slice(0, 2).join(', ')}
                   {typingNames.length > 2 ? ` +${typingNames.length - 2}` : ''} typing
                 </span>
                 <TypingDots />
               </span>
+            ) : conv?.type !== 'group' && isPeerOnline ? (
+              <span className="flex items-center gap-1.5 text-[11px] text-[#8A8F98] font-medium truncate">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                Online
+              </span>
+            ) : conv?.type !== 'group' && peerLastSeen ? (
+              <span className="text-[11px] text-[#8A8F98] truncate">
+                Offline
+              </span>
             ) : (
-              <span className="flex items-center gap-1 text-[11px] text-whatsapp-checkGray truncate">
-              <LockIcon size={10} /> End-to-end encrypted
-            </span>
+              <span className="flex items-center gap-1 text-[11px] text-[#8A8F98] truncate">
+                <LockIcon size={10} /> End-to-end encrypted
+              </span>
             )}
           </span>
         </button>
@@ -1028,14 +1074,14 @@ export function ChatWindow({ conversationId, onCall }: { conversationId: string;
             setPickerForMessage(null);
             setHeaderMenu((v) => !v);
           }}
-          className={`p-2 rounded-full transition ${headerMenu ? 'bg-white/15 text-white' : 'text-whatsapp-checkGray hover:text-white hover:bg-white/10'}`}
+          className={`p-2 rounded-full transition bg-[#E9EDF3] shadow-[4px_4px_8px_#b8bcc9,-4px_-4px_8px_#ffffff] ${headerMenu ? 'text-[#CC5500] shadow-[inset_4px_4px_8px_#b8bcc9,inset_-4px_-4px_8px_#ffffff]' : 'text-[#8A8F98] hover:text-[#CC5500]'}`}
         >
           <DotsIcon />
         </button>
         {headerMenu && (
           <>
             <div className="fixed inset-0 z-40" onClick={() => setHeaderMenu(false)} />
-            <div className="absolute right-2 top-full mt-1 z-50 w-56 rounded-2xl overflow-hidden bg-whatsapp-panel/95 border border-white/10 shadow-2xl backdrop-blur text-[13px] py-1">
+            <div className="absolute right-2 top-full mt-1 z-50 w-56 rounded-2xl overflow-hidden bg-[#E9EDF3] border border-white/70 shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] text-[#2F343D] text-[13px] py-1">
               {([
                 { k: 'audio', icon: <PhoneIcon />, label: 'Voice call' },
                 { k: 'video', icon: <VideoIcon />, label: 'Video call' },
@@ -1054,7 +1100,7 @@ export function ChatWindow({ conversationId, onCall }: { conversationId: string;
                     else if (k === 'media') { setGalleryOpen((v) => !v); setSearchOpen(false); }
                     else if (k === 'key') shareKey();
                   }}
-                  className="w-full flex items-center gap-3 px-4 py-2.5 text-left text-white/90 hover:bg-white/10 transition"
+                  className="w-full flex items-center gap-3 px-4 py-2.5 text-left text-[#2F343D] hover:bg-[#E0E5EC] hover:text-[#CC5500] transition"
                 >
                   <span className="w-5 flex items-center justify-center opacity-80 shrink-0">{item.icon}</span>
                   <span>{item.label}</span>
@@ -1065,25 +1111,25 @@ export function ChatWindow({ conversationId, onCall }: { conversationId: string;
         )}
       </div>
 
-      <div className="flex items-center justify-between px-3 py-1.5 bg-whatsapp-panel/60 border-b border-white/5 text-xs">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-[#E0E5EC] border-b border-white/70 text-xs text-[#2F343D]">
         <div className="flex items-center gap-2">
-          <Button size="sm" variant="flat" onPress={summarize} isLoading={summarizing}><span className="flex items-center gap-1"><SparkleIcon size={12} /> Summarize</span></Button>
-          {notice && <span className="text-[11px] text-warning truncate">{notice}</span>}
+          <Button size="sm" variant="flat" onPress={summarize} isLoading={summarizing} className="bg-[#E9EDF3] text-[#2F343D] shadow-[4px_4px_8px_#b8bcc9,-4px_-4px_8px_#ffffff] hover:text-[#CC5500]"><span className="flex items-center gap-1"><SparkleIcon size={12} /> Summarize</span></Button>
+          {notice && <span className="text-[11px] text-[#CC5500] truncate">{notice}</span>}
         </div>
-        <span className="text-[10px] text-white/50 hidden sm:flex items-center gap-1">
-          <InfoIcon size={10} /> Mention <span className="text-cyan-400 font-mono font-bold">@nexus</span> or <span className="text-cyan-400 font-mono font-bold">@ai</span> for AI assistant
+        <span className="text-[10px] text-[#8A8F98] hidden sm:flex items-center gap-1">
+          <InfoIcon size={10} /> Mention <span className="text-[#CC5500] font-mono font-bold">@nexus</span> or <span className="text-[#CC5500] font-mono font-bold">@ai</span> for AI assistant
         </span>
       </div>
       {summary && (
-        <div className="m-3 rounded-2xl border border-secondary/40 bg-gradient-to-br from-whatsapp-composer to-whatsapp-panel shadow-lg overflow-hidden">
-          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-secondary/25 bg-secondary/10">
-            <span aria-hidden className="flex items-center text-secondary"><SparkleIcon size={14} /></span>
-            <b className="text-[13px] font-semibold text-secondary">AI summary</b>
+        <div className="m-3 rounded-2xl border border-white/70 bg-[#E9EDF3] shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-white/70 bg-[#E0E5EC]">
+            <span aria-hidden className="flex items-center text-[#CC5500]"><SparkleIcon size={14} /></span>
+            <b className="text-[13px] font-semibold text-[#2F343D]">AI summary</b>
             <span className="flex-1" />
             <button
               aria-label="Dismiss summary"
               onClick={() => setSummary(null)}
-              className="w-6 h-6 rounded-full text-whatsapp-checkGray hover:text-white hover:bg-white/10 flex items-center justify-center transition"
+              className="w-6 h-6 rounded-full text-[#8A8F98] hover:text-[#CC5500] hover:bg-[#E0E5EC] flex items-center justify-center transition"
             >
               <CloseIcon size={12} />
             </button>
@@ -1095,51 +1141,45 @@ export function ChatWindow({ conversationId, onCall }: { conversationId: string;
       )}
 
       <div
-        className="flex-1 overflow-y-auto p-4 space-y-2"
+        className="flex-1 overflow-y-auto p-4 space-y-2 bg-[#E0E5EC]"
         onScroll={closeMenu}
-        style={{
-          backgroundImage:
-            'linear-gradient(rgba(20, 9, 43, 0.88), rgba(20, 9, 43, 0.88)), url(/doodle-bg.jpg)',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-        }}
       >
         {loading && <div className="flex justify-center py-10"><Spinner /></div>}
         {!loading && hasMore && !galleryOpen && (
           <div className="flex justify-center">
-            <Button size="sm" variant="flat" onPress={loadOlder} isLoading={loadingMore}>
+            <Button size="sm" variant="flat" onPress={loadOlder} isLoading={loadingMore} className="bg-[#E9EDF3] text-[#2F343D] shadow-[4px_4px_8px_#b8bcc9,-4px_-4px_8px_#ffffff]">
               Load older messages
             </Button>
           </div>
         )}
         {searchOpen && (
-          <div className="sticky top-0 z-10 bg-whatsapp-dark/95 pb-2">
+          <div className="sticky top-0 z-10 bg-[#E0E5EC]/95 pb-2">
             <input
               autoFocus
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search in this conversation…"
-              className="w-full text-sm bg-whatsapp-composer rounded-xl px-3 py-2 outline-none border border-white/10"
+              className="w-full text-sm bg-[#E0E5EC] text-[#2F343D] placeholder:text-[#8A8F98] rounded-xl px-3 py-2 outline-none border border-white/70 shadow-[inset_4px_4px_8px_#b8bcc9,inset_-4px_-4px_8px_#ffffff]"
             />
-            {query.trim() && <p className="text-[11px] text-whatsapp-checkGray mt-1">{visible.length} match{visible.length === 1 ? '' : 'es'}</p>}
+            {query.trim() && <p className="text-[11px] text-[#8A8F98] mt-1">{visible.length} match{visible.length === 1 ? '' : 'es'}</p>}
           </div>
         )}
         {galleryOpen ? (
           <div className="grid grid-cols-3 gap-2">
             {gallery.map((m) => (
-              <a key={m.id} href={m.mediaUrl} target="_blank" rel="noreferrer" title={`${m.senderName}: ${m.content}`} className="aspect-square rounded-lg overflow-hidden bg-whatsapp-composer flex items-center justify-center">
+              <a key={m.id} href={m.mediaUrl} target="_blank" rel="noreferrer" title={`${m.senderName}: ${m.content}`} className="aspect-square rounded-lg overflow-hidden bg-[#E9EDF3] border border-white/70 shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] flex items-center justify-center">
                 {m.mediaType === 'image' ? (
                   <img src={m.mediaUrl} alt="" className="w-full h-full object-cover" />
                 ) : m.mediaType === 'video' ? (
-                  <span className="text-white/70 flex items-center"><VideoIcon size={26} /></span>
+                  <span className="text-[#8A8F98] flex items-center"><VideoIcon size={26} /></span>
                 ) : m.mediaType === 'audio' ? (
-                  <span className="text-white/70 flex items-center"><MicIcon size={26} /></span>
+                  <span className="text-[#8A8F98] flex items-center"><MicIcon size={26} /></span>
                 ) : (
-                  <span className="text-white/70 flex items-center"><DocIcon size={26} /></span>
+                  <span className="text-[#8A8F98] flex items-center"><DocIcon size={26} /></span>
                 )}
               </a>
             ))}
-            {gallery.length === 0 && <p className="col-span-3 text-center text-xs text-whatsapp-checkGray py-10">No shared media yet.</p>}
+            {gallery.length === 0 && <p className="col-span-3 text-center text-xs text-[#8A8F98] py-10">No shared media yet.</p>}
           </div>
         ) : (
           !loading && visible.map((m) => {
@@ -1197,54 +1237,54 @@ export function ChatWindow({ conversationId, onCall }: { conversationId: string;
                     aria-label="Select message"
                     className={`shrink-0 w-5 h-5 mb-2 rounded-md border flex items-center justify-center ${
                       selectedIds.has(m.id)
-                        ? 'bg-secondary border-secondary text-white'
-                        : 'border-white/30 text-transparent'
+                        ? 'bg-[#CC5500] border-[#CC5500] text-white'
+                        : 'bg-[#E9EDF3] border-[#b8bcc9] text-transparent shadow-[inset_2px_2px_4px_#b8bcc9,inset_-2px_-2px_4px_#ffffff]'
                     }`}
                   >
                     <CheckIcon size={12} />
                   </button>
                 )}                <div
                   onContextMenu={(e) => onBubbleContext(e, m)}
-                  className={`relative max-w-[78%] rounded-2xl px-3 py-2 text-sm shadow-sm ${
+                  className={`relative max-w-[78%] rounded-2xl px-3 py-2 text-sm ${
                     me
-                      ? 'bg-whatsapp-outgoing rounded-br-sm'
+                      ? 'bg-[#CC5500] text-white rounded-br-md shadow-[5px_5px_10px_#b8bcc9]'
                       : isAi
-                      ? 'bg-gradient-to-br from-[#0c1a24] to-[#1b1226] border border-cyan-500/40 text-cyan-50 rounded-bl-sm shadow-md'
-                      : 'bg-whatsapp-composer rounded-bl-sm'
+                      ? 'bg-[#E9EDF3] text-[#2F343D] border border-white/70 border-l-4 border-l-[#CC5500] rounded-bl-md shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff]'
+                      : 'bg-[#E9EDF3] text-[#2F343D] rounded-bl-md border border-white/70 shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff]'
                   }`}
                 >
                   {/* WhatsApp-style arrow — hidden until hover, click expands the menu */}
                   <button
                     aria-label="Message options"
                     onClick={(e) => onChevronClick(e, m)}
-                    className={`absolute top-0 right-0 z-10 pl-6 pr-1.5 py-0.5 rounded-bl-xl rounded-tr-2xl text-white/80 leading-none transition-opacity bg-gradient-to-l from-black/60 to-transparent ${
+                    className={`absolute top-0 right-0 z-10 pl-6 pr-1.5 py-0.5 rounded-bl-xl rounded-tr-2xl leading-none transition-opacity ${
                       menu?.msg.id === m.id || pickerForMessage === m.id
                         ? 'opacity-100'
                         : 'opacity-0 group-hover:opacity-100'
-                    } hover:text-white flex items-center`}
+                    } ${me ? 'text-white/80 bg-gradient-to-l from-[#CC5500] to-transparent hover:text-white' : 'text-[#8A8F98] bg-gradient-to-l from-[#E9EDF3] to-transparent hover:text-[#CC5500]'} flex items-center`}
                   >
                     <ChevronDownIcon size={14} />
                   </button>
                   {(starredIds.has(m.id) || pinnedIds.includes(m.id)) && (
-                    <div className="flex items-center gap-1.5 mb-1 text-[10px] text-amber-300/90">
+                    <div className={`flex items-center gap-1.5 mb-1 text-[10px] ${me ? 'text-white/90' : 'text-[#CC5500]'}`}>
                       {starredIds.has(m.id) && <span title="Starred" className="flex items-center gap-0.5"><StarIcon size={10} /> starred</span>}
                       {pinnedIds.includes(m.id) && <span title="Pinned" className="flex items-center gap-0.5"><PinIcon size={10} /> pinned</span>}
                     </div>
                   )}
                   {isAi && (
                     <div className="flex items-center gap-1.5 mb-1">
-                      <span className="text-[9px] px-1 py-0.2 rounded bg-cyan-500/20 text-cyan-300 font-mono">BOT</span>
+                      <span className="text-[9px] px-1 py-0.2 rounded bg-[#CC5500]/15 text-[#CC5500] font-mono">BOT</span>
                     </div>
                   )}
                   {m.replyTo && (
-                    <p className="text-[11px] opacity-70 border-l-2 border-secondary pl-2 mb-1 truncate">
+                    <p className="text-[11px] pl-2 pr-2 py-1 mb-1 truncate rounded-lg border-l-4 border-[#CC5500] bg-[#E0E5EC] text-[#2F343D] shadow-[inset_3px_3px_6px_#b8bcc9,inset_-3px_-3px_6px_#ffffff]">
                       {m.replyTo.content}
                     </p>
                   )}
 
                   {/* Inline Image Rendering */}
                   {isImage && (
-                    <div className="relative mb-1.5 rounded-xl overflow-hidden bg-black/20 group/img">
+                    <div className={`relative mb-1.5 rounded-xl overflow-hidden group/img ${me ? 'bg-white/20' : 'bg-[#E0E5EC]'}`}>
                       <img
                         src={m.mediaUrl}
                         alt={m.content || 'Image'}
@@ -1257,7 +1297,7 @@ export function ChatWindow({ conversationId, onCall }: { conversationId: string;
                           e.stopPropagation();
                           openLightbox([m.mediaUrl!], 0);
                         }}
-                        className="absolute bottom-2 right-2 bg-black/70 hover:bg-black/90 text-white text-[10px] px-2 py-1 rounded-md opacity-0 group-hover/img:opacity-100 transition backdrop-blur-sm flex items-center gap-1"
+                        className="absolute bottom-2 right-2 bg-[#E9EDF3] text-[#2F343D] border border-white/70 shadow-[4px_4px_8px_#b8bcc9,-4px_-4px_8px_#ffffff] hover:text-[#CC5500] text-[10px] px-2 py-1 rounded-md opacity-0 group-hover/img:opacity-100 transition flex items-center gap-1"
                         title="Click to view full image"
                       >
                         <SearchIcon size={10} /> Full view
@@ -1271,10 +1311,10 @@ export function ChatWindow({ conversationId, onCall }: { conversationId: string;
 
                   {m.mediaUrl && m.mediaType === 'audio' && (
                     <div className="mb-1">
-                      <AudioMessage src={m.mediaUrl} seed={m.id} />
+                      <AudioMessage src={m.mediaUrl} seed={m.id} dark={me} />
                       <div className="mt-1 flex flex-col gap-1">
                         <button
-                          className="text-[10px] text-cyan-400/90 hover:text-cyan-300 hover:underline self-start flex items-center gap-1 font-medium"
+                          className={`text-[10px] hover:underline self-start flex items-center gap-1 font-medium ${me ? 'text-white/90 hover:text-white' : 'text-[#CC5500] hover:text-[#B34A00]'}`}
                           onClick={() => handleTranscribe(m)}
                           disabled={transcribingId === m.id}
                         >
@@ -1287,7 +1327,7 @@ export function ChatWindow({ conversationId, onCall }: { conversationId: string;
                           )}
                         </button>
                         {transcriptions[m.id] && (
-                          <p className="text-[11px] text-cyan-200/90 italic bg-black/40 border-l-2 border-cyan-400 pl-2 py-1 rounded">
+                          <p className="text-[11px] text-[#2F343D] italic bg-[#E0E5EC] border-l-4 border-[#CC5500] shadow-[inset_3px_3px_6px_#b8bcc9,inset_-3px_-3px_6px_#ffffff] pl-2 pr-2 py-1 rounded-lg">
                             "{transcriptions[m.id]}"
                           </p>
                         )}
@@ -1300,7 +1340,7 @@ export function ChatWindow({ conversationId, onCall }: { conversationId: string;
                       href={m.mediaUrl}
                       target="_blank"
                       rel="noreferrer"
-                      className="underline text-xs flex items-center gap-1 my-1 text-secondary"
+                      className={`underline text-xs flex items-center gap-1 my-1 ${me ? 'text-white' : 'text-[#CC5500] hover:text-[#B34A00]'}`}
                     >
                       <DocIcon size={12} /> Open attachment
                     </a>
@@ -1315,13 +1355,16 @@ export function ChatWindow({ conversationId, onCall }: { conversationId: string;
 
                   <div className="flex items-center justify-end gap-1 mt-1">
                     {m.isEncrypted && <span title="Encrypted" className="flex items-center opacity-70"><LockIcon size={10} /></span>}
-                    <span className="text-[10px] opacity-60">
+                    <span className={`text-[10px] ${me ? 'text-white/80' : 'text-[#8A8F98]'}`}>
                       {new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
                     {me && (
-                      <span className={`text-[10px] ${m.status === 'read' ? 'text-whatsapp-checkBlue' : 'opacity-60'}`}>
+                      <span className={`text-[10px] ${m.status === 'read' ? 'text-white font-bold' : 'text-white/70'}`}>
                         {m.status === 'read' ? '✓✓' : '✓'}
                       </span>
+                    )}
+                    {!me && m.status === 'read' && (
+                      <span className="text-[10px] text-[#CC5500]">✓✓</span>
                     )}
                   </div>
 
@@ -1334,8 +1377,10 @@ export function ChatWindow({ conversationId, onCall }: { conversationId: string;
                           onClick={() => react(m, g.emoji)}
                           className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border transition-all ${
                             g.hasReacted
-                              ? 'bg-secondary/20 border-secondary text-secondary font-medium'
-                              : 'bg-white/10 border-white/15 hover:bg-white/20 text-white/90'
+                              ? 'bg-[#CC5500]/15 border-[#CC5500] text-[#CC5500] shadow-[inset_2px_2px_4px_#b8bcc9,inset_-2px_-2px_4px_#ffffff] font-medium'
+                              : me
+                              ? 'bg-white/20 border-white/40 text-white hover:bg-white/30'
+                              : 'bg-[#E9EDF3] border-white/70 text-[#2F343D] shadow-[3px_3px_6px_#b8bcc9,-3px_-3px_6px_#ffffff] hover:text-[#CC5500]'
                           }`}
                           title={`${g.users.join(', ')} reacted with ${g.emoji}`}
                         >
@@ -1353,18 +1398,18 @@ export function ChatWindow({ conversationId, onCall }: { conversationId: string;
                       <div
                         className={`absolute z-50 bottom-full mb-2 ${
                           me ? 'right-0' : 'left-0'
-                        } shadow-2xl rounded-2xl overflow-hidden border border-white/20 bg-whatsapp-panel`}
+                        } shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] rounded-2xl overflow-hidden border border-white/70 bg-[#E9EDF3]`}
                       >
                         <div className="relative">
                           <button
                             onClick={() => setPickerForMessage(null)}
                             aria-label="Close emoji picker"
-                            className="absolute top-2 right-2 z-50 bg-black/60 hover:bg-black/90 text-white rounded-full w-6 h-6 flex items-center justify-center"
+                            className="absolute top-2 right-2 z-50 bg-[#E0E5EC] text-[#8A8F98] hover:text-[#CC5500] shadow-[3px_3px_6px_#b8bcc9,-3px_-3px_6px_#ffffff] rounded-full w-6 h-6 flex items-center justify-center"
                           >
                             <CloseIcon size={12} />
                           </button>
                           <EmojiPicker
-                            theme={Theme.DARK}
+                            theme={Theme.LIGHT}
                             lazyLoadEmojis
                             width={320}
                             height={380}
@@ -1385,13 +1430,13 @@ export function ChatWindow({ conversationId, onCall }: { conversationId: string;
         {/* Live typing bubble — animated dots while anyone else types */}
         {typingNames.length > 0 && !galleryOpen && (
           <div className="flex items-end gap-2 mb-2 justify-start">
-            <div className="relative max-w-[78%] rounded-2xl rounded-bl-sm px-4 py-3 text-sm shadow-sm bg-whatsapp-composer">
-              <p className="text-[11px] font-bold text-secondary mb-1">{typingNames[0]}</p>
+            <div className="relative max-w-[78%] rounded-2xl rounded-bl-md px-4 py-3 text-sm bg-[#E9EDF3] text-[#2F343D] border border-white/70 shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff]">
+              <p className="text-[11px] font-bold text-[#CC5500] mb-1">{typingNames[0]}</p>
               <span className="inline-flex items-center gap-1.5" aria-label={`${typingNames[0]} is typing`}>
                 {[0, 1, 2].map((i) => (
                   <span
                     key={i}
-                    className="w-2 h-2 rounded-full bg-white/70 animate-typing-bounce"
+                    className="w-2 h-2 rounded-full bg-[#8A8F98] animate-typing-bounce"
                     style={{ animationDelay: `${i * 0.18}s` }}
                   />
                 ))}
@@ -1404,13 +1449,13 @@ export function ChatWindow({ conversationId, onCall }: { conversationId: string;
 
       {/* Pinned strip (WhatsApp-style) */}
       {pinnedIds.length > 0 && !galleryOpen && (
-        <div className="mx-3 mt-2 flex items-center gap-2 px-3 py-1.5 bg-whatsapp-composer/80 border border-white/10 rounded-xl text-xs">
-          <span className="flex items-center text-amber-300/90"><PinIcon size={12} /></span>
-          <span className="flex-1 truncate text-white/80">
+        <div className="mx-3 mt-2 flex items-center gap-2 px-3 py-1.5 bg-[#E9EDF3] text-[#2F343D] border border-white/70 shadow-[4px_4px_8px_#b8bcc9,-4px_-4px_8px_#ffffff] rounded-xl text-xs">
+          <span className="flex items-center text-[#CC5500]"><PinIcon size={12} /></span>
+          <span className="flex-1 truncate">
             {pinnedIds.length} pinned: {(messages.find((x) => x.id === pinnedIds[0])?.content || 'message').slice(0, 80)}
           </span>
           <button
-            className="text-whatsapp-checkGray hover:text-white"
+            className="text-[#8A8F98] hover:text-[#CC5500]"
             onClick={() => {
               const el = document.getElementById(`msg-${pinnedIds[0]}`);
               el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1418,7 +1463,7 @@ export function ChatWindow({ conversationId, onCall }: { conversationId: string;
           >
             Jump
           </button>
-          <button className="text-whatsapp-checkGray hover:text-white flex items-center" aria-label="Dismiss pinned" onClick={() => {
+          <button className="text-[#8A8F98] hover:text-[#CC5500] flex items-center" aria-label="Dismiss pinned" onClick={() => {
             setPinnedIds([]);
             try { localStorage.removeItem(`nexus_pin_${conversationId}`); } catch { /* ignore */ }
           }}>
@@ -1429,20 +1474,20 @@ export function ChatWindow({ conversationId, onCall }: { conversationId: string;
 
       {/* Select-mode action bar */}
       {selectMode && (
-        <div className="mx-3 mt-2 flex items-center gap-2 px-3 py-2 bg-whatsapp-panel border border-white/10 rounded-xl text-xs">
+        <div className="mx-3 mt-2 flex items-center gap-2 px-3 py-2 bg-[#E0E5EC] text-[#2F343D] border border-white/70 shadow-[4px_4px_8px_#b8bcc9,-4px_-4px_8px_#ffffff] rounded-xl text-xs">
           <b>{selectedIds.size} selected</b>
           <span className="flex-1" />
-          <button className="hover:underline" onClick={copySelected} disabled={selectedIds.size === 0}>Copy</button>
-          <button className="hover:underline" onClick={() => {
+          <button className="hover:text-[#CC5500] hover:underline" onClick={copySelected} disabled={selectedIds.size === 0}>Copy</button>
+          <button className="hover:text-[#CC5500] hover:underline" onClick={() => {
             const first = visible.find((m) => selectedIds.has(m.id));
             if (first) { setForwardMsg(first); }
           }} disabled={selectedIds.size === 0}>Forward</button>
-          <button className="hover:underline text-red-400" onClick={() => {
+          <button className="hover:underline text-[#CC5500]" onClick={() => {
             visible.filter((m) => selectedIds.has(m.id)).forEach((m) => removeMessage(conversationId, m.id));
             setSelectMode(false);
             setSelectedIds(new Set());
           }} disabled={selectedIds.size === 0}>Delete</button>
-          <button className="text-whatsapp-checkGray hover:text-white" onClick={() => { setSelectMode(false); setSelectedIds(new Set()); }}>Cancel</button>
+          <button className="text-[#8A8F98] hover:text-[#CC5500]" onClick={() => { setSelectMode(false); setSelectedIds(new Set()); }}>Cancel</button>
         </div>
       )}
 
@@ -1457,7 +1502,7 @@ export function ChatWindow({ conversationId, onCall }: { conversationId: string;
             onClick={(e) => e.stopPropagation()}
           >
             {/* Quick-reaction strip */}
-            <div className="flex items-center justify-between px-2 py-1.5 mb-1 rounded-full bg-whatsapp-panel/95 border border-white/10 shadow-2xl backdrop-blur">
+            <div className="flex items-center justify-between px-2 py-1.5 mb-1 rounded-full bg-[#E9EDF3] border border-white/70 shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff]">
               {['👍', '❤️', '😂', '😮', '😢', '🙏'].map((e) => (
                 <button
                   key={e}
@@ -1469,7 +1514,7 @@ export function ChatWindow({ conversationId, onCall }: { conversationId: string;
                 </button>
               ))}
               <button
-                className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center"
+                className="w-7 h-7 rounded-full bg-[#E0E5EC] text-[#8A8F98] hover:text-[#CC5500] shadow-[3px_3px_6px_#b8bcc9,-3px_-3px_6px_#ffffff] flex items-center justify-center"
                 onClick={() => { const id = menu.msg.id; closeMenu(); setPickerForMessage(id); }}
                 title="More emojis"
               >
@@ -1477,7 +1522,7 @@ export function ChatWindow({ conversationId, onCall }: { conversationId: string;
               </button>
             </div>
             {/* Menu list */}
-            <div className="rounded-2xl overflow-hidden bg-whatsapp-panel/95 border border-white/10 shadow-2xl backdrop-blur text-[13px]">
+            <div className="rounded-2xl overflow-hidden bg-[#E9EDF3] border border-white/70 shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] text-[#2F343D] text-[13px]">
               {([
                 { k: 'info', icon: <InfoIcon />, label: 'Message info' },
                 { k: 'reply', icon: <ReplyIcon />, label: 'Reply' },
@@ -1513,8 +1558,8 @@ export function ChatWindow({ conversationId, onCall }: { conversationId: string;
                     else if (k === 'open' && m.mediaUrl) window.open(m.mediaUrl, '_blank', 'noopener');
                     else if (k === 'delete') deleteMsg(m);
                   }}
-                  className={`w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-white/10 transition ${
-                    item.k === 'delete' ? 'text-red-400' : item.k === 'nexus' ? 'text-cyan-300 font-semibold' : 'text-white/90'
+                  className={`w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-[#E0E5EC] transition ${
+                    item.k === 'delete' ? 'text-[#CC5500]' : item.k === 'nexus' ? 'text-[#CC5500] font-semibold' : 'text-[#2F343D]'
                   }`}
                 >
                   <span className="w-5 flex items-center justify-center opacity-80 shrink-0">{item.icon}</span>
@@ -1528,46 +1573,46 @@ export function ChatWindow({ conversationId, onCall }: { conversationId: string;
 
       {/* Message info modal */}
       {infoMsg && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={() => setInfoMsg(null)}>
-          <div className="w-full max-w-sm rounded-2xl bg-whatsapp-panel border border-white/10 p-4 text-sm" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 bg-[#2F343D]/30 flex items-center justify-center p-4" onClick={() => setInfoMsg(null)}>
+          <div className="w-full max-w-sm rounded-2xl bg-[#E0E5EC] text-[#2F343D] border border-white/70 shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] p-4 text-sm" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-2">
               <b>Message info</b>
-              <button aria-label="Close message info" className="text-whatsapp-checkGray hover:text-white flex items-center" onClick={() => setInfoMsg(null)}><CloseIcon size={14} /></button>
+              <button aria-label="Close message info" className="text-[#8A8F98] hover:text-[#CC5500] flex items-center" onClick={() => setInfoMsg(null)}><CloseIcon size={14} /></button>
             </div>
-            <p className="text-xs text-whatsapp-checkGray">From</p>
+            <p className="text-xs text-[#8A8F98]">From</p>
             <p className="mb-2">{infoMsg.senderName}</p>
-            <p className="text-xs text-whatsapp-checkGray">Sent at</p>
+            <p className="text-xs text-[#8A8F98]">Sent at</p>
             <p className="mb-2">{new Date(infoMsg.createdAt).toLocaleString()}</p>
-            <p className="text-xs text-whatsapp-checkGray">Status</p>
+            <p className="text-xs text-[#8A8F98]">Status</p>
             <p className="mb-2">{infoMsg.status === 'read' ? '✓✓ Read' : infoMsg.status === 'delivered' ? '✓✓ Delivered' : '✓ Sent'}</p>
-            <p className="text-xs text-whatsapp-checkGray">Security</p>
+            <p className="text-xs text-[#8A8F98]">Security</p>
             <p className="mb-2 flex items-center gap-1">{infoMsg.isEncrypted ? (<><LockIcon size={12} /> End-to-end encrypted</>) : 'Plaintext (AI-visible)'}</p>
-            <p className="text-xs text-whatsapp-checkGray">Content</p>
-            <p className="whitespace-pre-wrap break-words bg-black/30 rounded-lg p-2 max-h-40 overflow-y-auto">{infoMsg.content || '(media)'}</p>
+            <p className="text-xs text-[#8A8F98]">Content</p>
+            <p className="whitespace-pre-wrap break-words bg-[#E9EDF3] border border-white/70 shadow-[inset_4px_4px_8px_#b8bcc9,inset_-4px_-4px_8px_#ffffff] rounded-lg p-2 max-h-40 overflow-y-auto">{infoMsg.content || '(media)'}</p>
           </div>
         </div>
       )}
 
       {/* Forward picker */}
       {forwardMsg && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={() => setForwardMsg(null)}>
-          <div className="w-full max-w-sm rounded-2xl bg-whatsapp-panel border border-white/10 p-4 text-sm" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 bg-[#2F343D]/30 flex items-center justify-center p-4" onClick={() => setForwardMsg(null)}>
+          <div className="w-full max-w-sm rounded-2xl bg-[#E0E5EC] text-[#2F343D] border border-white/70 shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] p-4 text-sm" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-2">
               <b>Forward to…</b>
-              <button aria-label="Close forward picker" className="text-whatsapp-checkGray hover:text-white flex items-center" onClick={() => setForwardMsg(null)}><CloseIcon size={14} /></button>
+              <button aria-label="Close forward picker" className="text-[#8A8F98] hover:text-[#CC5500] flex items-center" onClick={() => setForwardMsg(null)}><CloseIcon size={14} /></button>
             </div>
             <div className="max-h-64 overflow-y-auto space-y-1">
               {conversations.filter((c) => c.id !== conversationId).map((c) => (
                 <button
                   key={c.id}
                   onClick={() => forwardTo(c.id)}
-                  className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 truncate"
+                  className="w-full text-left px-3 py-2 rounded-lg hover:bg-[#E9EDF3] hover:text-[#CC5500] truncate"
                 >
                   {c.title}
                 </button>
               ))}
               {conversations.filter((c) => c.id !== conversationId).length === 0 && (
-                <p className="text-xs text-whatsapp-checkGray py-6 text-center">No other conversations yet.</p>
+                <p className="text-xs text-[#8A8F98] py-6 text-center">No other conversations yet.</p>
               )}
             </div>
           </div>
@@ -1577,11 +1622,11 @@ export function ChatWindow({ conversationId, onCall }: { conversationId: string;
       {/* Lightbox / Zoom Image Modal (album-aware: arrows navigate) */}
       {lightbox && (
         <div
-          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-[#2F343D]/30 flex items-center justify-center p-4"
           onClick={() => setLightbox(null)}
         >
           <div
-            className="relative max-w-4xl max-h-[90vh] flex flex-col items-center"
+            className="relative max-w-4xl max-h-[90vh] flex flex-col items-center rounded-2xl bg-[#E0E5EC] border border-white/70 shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] p-4"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="relative flex items-center">
@@ -1590,7 +1635,7 @@ export function ChatWindow({ conversationId, onCall }: { conversationId: string;
                   onClick={() => setLightbox((lb) => (lb && lb.i > 0 ? { ...lb, i: lb.i - 1 } : lb))}
                   disabled={lightbox.i === 0}
                   aria-label="Previous photo"
-                  className="absolute left-2 z-10 w-9 h-9 rounded-full bg-black/60 hover:bg-black/90 text-white disabled:opacity-30 flex items-center justify-center"
+                  className="absolute left-2 z-10 w-9 h-9 rounded-full bg-[#E9EDF3] text-[#2F343D] hover:text-[#CC5500] shadow-[4px_4px_8px_#b8bcc9,-4px_-4px_8px_#ffffff] disabled:opacity-30 flex items-center justify-center"
                 >
                   <ChevronLeftIcon size={18} />
                 </button>
@@ -1599,21 +1644,21 @@ export function ChatWindow({ conversationId, onCall }: { conversationId: string;
                 key={lightbox.urls[lightbox.i]}
                 src={lightbox.urls[lightbox.i]}
                 alt=""
-                className="max-w-full max-h-[80vh] rounded-xl object-contain shadow-2xl"
+                className="max-w-full max-h-[80vh] rounded-xl object-contain shadow-[5px_5px_10px_#b8bcc9]"
               />
               {lightbox.urls.length > 1 && (
                 <button
                   onClick={() => setLightbox((lb) => (lb && lb.i < lb.urls.length - 1 ? { ...lb, i: lb.i + 1 } : lb))}
                   disabled={lightbox.i === lightbox.urls.length - 1}
                   aria-label="Next photo"
-                  className="absolute right-2 z-10 w-9 h-9 rounded-full bg-black/60 hover:bg-black/90 text-white disabled:opacity-30 flex items-center justify-center"
+                  className="absolute right-2 z-10 w-9 h-9 rounded-full bg-[#E9EDF3] text-[#2F343D] hover:text-[#CC5500] shadow-[4px_4px_8px_#b8bcc9,-4px_-4px_8px_#ffffff] disabled:opacity-30 flex items-center justify-center"
                 >
                   <ChevronRightIcon size={18} />
                 </button>
               )}
             </div>
             {lightbox.urls.length > 1 && (
-              <p className="mt-2 text-xs text-white/70">
+              <p className="mt-2 text-xs text-[#8A8F98]">
                 {lightbox.i + 1} / {lightbox.urls.length}
               </p>
             )}
@@ -1622,14 +1667,14 @@ export function ChatWindow({ conversationId, onCall }: { conversationId: string;
                 href={lightbox.urls[lightbox.i]}
                 target="_blank"
                 rel="noreferrer"
-                className="text-xs bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition"
+                className="text-xs bg-[#CC5500] hover:bg-[#B34A00] text-white px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition shadow-[4px_4px_8px_#b8bcc9,-4px_-4px_8px_#ffffff]"
               >
                 <SaveIcon size={12} /> Open in new tab
               </a>
               <button
                 onClick={() => setLightbox(null)}
                 aria-label="Close viewer"
-                className="text-xs bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg transition flex items-center gap-1.5"
+                className="text-xs bg-[#E9EDF3] hover:text-[#CC5500] text-[#2F343D] border border-white/70 px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 shadow-[4px_4px_8px_#b8bcc9,-4px_-4px_8px_#ffffff]"
               >
                 <CloseIcon size={12} /> Close
               </button>
@@ -1640,31 +1685,31 @@ export function ChatWindow({ conversationId, onCall }: { conversationId: string;
 
       {/* Peer / group profile — shows the other user's photo, name and About status */}
       {peerOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={() => setPeerOpen(false)}>
-          <div className="w-full max-w-sm rounded-2xl bg-whatsapp-panel border border-white/10 p-6 text-sm text-center" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 bg-[#2F343D]/30 flex items-center justify-center p-4" onClick={() => setPeerOpen(false)}>
+          <div className="w-full max-w-sm rounded-2xl bg-[#E0E5EC] text-[#2F343D] border border-white/70 shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff] p-6 text-sm text-center" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <b>{conv?.type === 'group' ? 'Group info' : 'Contact info'}</b>
-              <button aria-label="Close contact info" className="text-whatsapp-checkGray hover:text-white flex items-center" onClick={() => setPeerOpen(false)}><CloseIcon size={14} /></button>
+              <button aria-label="Close contact info" className="text-[#8A8F98] hover:text-[#CC5500] flex items-center" onClick={() => setPeerOpen(false)}><CloseIcon size={14} /></button>
             </div>
             <div className="flex justify-center mb-3">
-              <Avatar src={convAvatar} name={title} size="lg" className="w-24 h-24 text-2xl" />
+              <Avatar src={convAvatar} name={title} size="lg" className="w-24 h-24 text-2xl ring-4 ring-white shadow-[6px_6px_12px_#b8bcc9,-6px_-6px_12px_#ffffff]" />
             </div>
             <p className="font-semibold text-base truncate">{title}</p>
             {conv?.type === 'direct' && peer ? (
               <>
                 {(peers[peer.userId]?.username || peer.username) && (
-                  <p className="text-xs text-whatsapp-checkGray mt-0.5">
+                  <p className="text-xs text-[#8A8F98] mt-0.5">
                     @{(peers[peer.userId]?.username || peer.username || '').replace(/^@+/, '')}
                   </p>
                 )}
-                <p className="text-xs text-whatsapp-checkGray mt-4 text-left">About</p>
-                <p className="text-sm mt-0.5 text-left bg-black/30 rounded-lg p-2.5 min-h-[40px]">
+                <p className="text-xs text-[#8A8F98] mt-4 text-left">About</p>
+                <p className="text-sm mt-0.5 text-left bg-[#E9EDF3] border border-white/70 shadow-[inset_4px_4px_8px_#b8bcc9,inset_-4px_-4px_8px_#ffffff] rounded-lg p-2.5 min-h-[40px]">
                   {peers[peer.userId]?.about || peer.about || "What's happening?"}
                 </p>
               </>
             ) : (
               <>
-                <p className="text-xs text-whatsapp-checkGray mt-1">
+                <p className="text-xs text-[#8A8F98] mt-1">
                   {(conv?.participants?.length || 0)} members · End-to-end encrypted
                 </p>
                 <div className="mt-4 space-y-1.5 text-left max-h-56 overflow-y-auto">
@@ -1672,11 +1717,11 @@ export function ChatWindow({ conversationId, onCall }: { conversationId: string;
                     const p = peers[id];
                     if (!p) return null;
                     return (
-                      <div key={id} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg bg-black/20">
+                      <div key={id} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg bg-[#E9EDF3] border border-white/70 shadow-[4px_4px_8px_#b8bcc9,-4px_-4px_8px_#ffffff]">
                         <Avatar src={p.avatarUrl} name={p.name || p.username} size="sm" />
                         <span className="flex-1 min-w-0">
                           <span className="block truncate text-[13px]">{p.name || p.username}</span>
-                          {p.about && <span className="block truncate text-[11px] text-white/50">{p.about}</span>}
+                          {p.about && <span className="block truncate text-[11px] text-[#8A8F98]">{p.about}</span>}
                         </span>
                       </div>
                     );

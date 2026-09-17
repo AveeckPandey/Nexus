@@ -39,14 +39,21 @@ describe('features-cap: WebRTC 5-peer limit, AI Bot, Transcribe & Ghost Chat', (
     test('enforces maximum 5 participants for P2P mesh and rejects the 6th participant', async () => {
       const calls = new WebRtcService();
       const mockTokens = { verify: jest.fn() } as any;
-      const gateway = new WebRtcGateway(calls, mockTokens);
+      const mockChat = {
+        getConversation: jest.fn(async () => ({
+          id: 'c1',
+          participants: ['u0', 'u1', 'u2', 'u3', 'u4', 'u5'],
+        })),
+        isMember: jest.fn(async () => true),
+      } as any;
+      const gateway = new WebRtcGateway(calls, mockTokens, mockChat);
 
       const serverToEmit = jest.fn();
       gateway.server = { to: jest.fn().mockReturnValue({ emit: serverToEmit }) } as any;
 
       // Initiate call
       const initSocket: any = { id: 'socket_peer_0', data: { userId: 'u0' }, join: jest.fn() };
-      const res = gateway.initiate(initSocket, {
+      const res = await gateway.initiate(initSocket, {
         conversationId: 'c1',
         initiatorName: 'Peer 0',
         callType: 'video',
@@ -68,7 +75,8 @@ describe('features-cap: WebRTC 5-peer limit, AI Bot, Transcribe & Ghost Chat', (
       }
 
       const activeCall = await calls.getCall(callId);
-      expect(activeCall?.participants.size).toBe(5);
+      // Capacity counts verified humans (initiator + 4 accepters).
+      expect(activeCall?.userIds.size).toBe(5);
 
       // Peer 5 (6th participant) attempts to join
       const peer6Socket: any = {
@@ -84,8 +92,8 @@ describe('features-cap: WebRTC 5-peer limit, AI Bot, Transcribe & Ghost Chat', (
         callId,
         reason: 'Call is full (maximum 5 participants for P2P mesh)',
       });
-      // Participant count remains capped at 5
-      expect(activeCall?.participants.size).toBe(5);
+      // Participant count remains capped at 5 humans
+      expect(activeCall?.userIds.size).toBe(5);
     });
   });
 

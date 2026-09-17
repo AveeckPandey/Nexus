@@ -102,4 +102,30 @@ export class NotificationsService {
       this.logger.error(`Push dispatch failed: ${err.message}`);
     }
   }
+
+  async testPushNotification(
+    userId: string,
+  ): Promise<{ tokensCount: number; platforms: string[]; success: boolean; message: string }> {
+    const tokens = await this.getTokens(userId);
+    if (!tokens.length) {
+      return {
+        tokensCount: 0,
+        platforms: [],
+        success: false,
+        message: 'No push tokens or subscriptions registered for this user.',
+      };
+    }
+    await this.sendPushNotification(
+      userId,
+      'Nexus Notification Test',
+      '🔔 Nexus notifications are active and working!',
+      { test: true, timestamp: Date.now() },
+    );
+    return {
+      tokensCount: tokens.length,
+      platforms: tokens.map((t) => t.platform),
+      success: true,
+      message: `Test notification dispatched to ${tokens.length} device(s) [${tokens.map((t) => t.platform).join(', ')}]`,
+    };
+  }
 }

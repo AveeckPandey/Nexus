@@ -70,6 +70,8 @@ tests/
     ├── memory-leak.spec.ts            # Heap snapshot comparison (0 → 1K users → 0)
     ├── zero-knowledge.spec.ts         # Asserts plaintext NEVER exists in DynamoDB
     ├── idor-guards.spec.ts            # Asserts User C cannot eavesdrop on User A/B
+    ├── metadata-leakage.spec.ts       # Ciphertext-only transport + explicit metadata allowlist
+    ├── authz-escalation.spec.ts       # No membership forgery (read/typing/reaction/burn), gated bench auth, call authz, SSRF guard, dev-auth fail-closed, loud cloud writes
     └── xss-sanitization.spec.ts       # Malicious script tag escaping in message bubbles
 ```
 

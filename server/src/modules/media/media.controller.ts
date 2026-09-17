@@ -64,9 +64,29 @@ export class MediaController {
   }
 
   @Put('upload/*')
-  async uploadLocal(@Req() req: any) {
+  @UseGuards(CognitoAuthGuard)
+  async uploadLocal(@Req() req: any, @CurrentUser() u: AuthenticatedUser) {
     const rawKey = req.params?.['*'] || req.url.split('?')[0].replace(/^\/api\/media\/upload\/?/, '');
+    // Ownership: callers may only write under their own uploads/<userId>/
+    // prefix. Without this, any authenticated user could overwrite anyone
+    // else's media (or plant content served under another identity).
+    const cleaned = rawKey.replace(/\\/g, '/').replace(/^\/+/, '');
+    const prefix = `uploads/${u.userId}/`;
+    const rel = cleaned.startsWith('uploads/') ? cleaned.slice('uploads/'.length) : cleaned;
+    if (!cleaned.startsWith(prefix) && !rel.startsWith(`${u.userId}/`)) {
+      throw new BadRequestException('Upload path must be within your own uploads directory');
+    }
     const filePath = getSafeFilePath(rawKey);
+    // Extension allow-list mirrors the presigned flow: only media/document
+    // types are servable; executables and scripts are never written.
+    const ext = path.extname(filePath).toLowerCase();
+    const SERVABLE_EXTS = new Set([
+      '.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg', '.mp4', '.webm',
+      '.mp3', '.wav', '.ogg', '.pdf',
+    ]);
+    if (!SERVABLE_EXTS.has(ext)) {
+      throw new BadRequestException(`Unsupported file type: ${ext || '(none)'}`);
+    }
     await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
 
     let contentBuffer: Buffer;
@@ -95,7 +115,6 @@ export class MediaController {
     }
 
     // Security check 3: Sanitize SVG scripts / XSS injection
-    const ext = path.extname(filePath).toLowerCase();
     if (ext === '.svg') {
       const svgStr = contentBuffer.toString('utf8');
       if (/<script|onload=|onerror=|onclick=/i.test(svgStr)) {
