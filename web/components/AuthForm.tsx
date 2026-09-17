@@ -280,8 +280,8 @@ export function AuthForm() {
       <header className="relative z-10 w-full max-w-[1024px] shrink-0 flex items-center justify-between gap-3">
         <NexusMark />
         <div className="flex items-center gap-2">
-          <span className="hidden sm:inline-flex items-center gap-2 text-[10px] font-bold tracking-wide bg-[#E0E5EC] text-[#2F343D] rounded-full px-3 py-1.5 shadow-[4px_4px_8px_#b8bcc9,-4px_-4px_8px_#ffffff]">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#CC5500] shadow-[0_0_8px_#CC5500]" /> E2EE LIVE
+          <span className="hidden sm:inline-flex items-center text-[10px] font-bold tracking-wide bg-[#E0E5EC] text-[#2F343D] rounded-full px-3 py-1.5 shadow-[4px_4px_8px_#b8bcc9,-4px_-4px_8px_#ffffff]">
+            E2EE LIVE
           </span>
           <span className="text-[10px] font-bold tracking-wide bg-[#E0E5EC] text-[#8A8F98] rounded-full px-3 py-1.5 shadow-[4px_4px_8px_#b8bcc9,-4px_-4px_8px_#ffffff]">
             NO TRACKING
@@ -293,8 +293,8 @@ export function AuthForm() {
       <div className="relative z-10 w-full max-w-[1024px] mt-3 flex-1 min-h-0 grid lg:grid-cols-[1.02fr_0.98fr] bg-[#E0E5EC] rounded-[24px] shadow-[16px_16px_40px_#babecc,-16px_-16px_40px_#ffffff] overflow-hidden">
         {/* LEFT */}
         <div className="hidden md:flex p-5 sm:p-6 flex-col min-h-0 overflow-hidden">
-          <span className="inline-flex w-fit items-center gap-2 text-[10px] font-bold tracking-[0.16em] text-[#CC5500] bg-[#E0E5EC] rounded-full px-3 py-1.5 shadow-[inset_3px_3px_6px_#b8bcc9,inset_-3px_-3px_6px_#ffffff]">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#CC5500]" /> 100% ENCRYPTED
+          <span className="inline-flex w-fit items-center text-[10px] font-bold tracking-[0.16em] text-[#CC5500] bg-[#E0E5EC] rounded-full px-3 py-1.5 shadow-[inset_3px_3px_6px_#b8bcc9,inset_-3px_-3px_6px_#ffffff]">
+            100% ENCRYPTED
           </span>
 
           <h1 className="mt-3 text-[30px] xl:text-[36px] leading-[1.02] font-extrabold tracking-tight text-[#2F343D]">
@@ -306,7 +306,7 @@ export function AuthForm() {
           </h1>
 
           <p className="mt-2.5 max-w-[360px] text-[13px] leading-5 font-medium text-[#6B7280]">
-            End-to-end encrypted messaging, self-destructing ghost chats, and HD video calls — all in your
+            End-to-end encrypted messaging, self-destructing ghost chats, and HD video calls all in your
             browser.
           </p>
 
