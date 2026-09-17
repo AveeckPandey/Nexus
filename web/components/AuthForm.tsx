@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { motion } from 'framer-motion';
 import { authApi } from '@/lib/api';
 import { ensureIdentityPublished } from '@/lib/keyx';
 import { useAuthStore } from '@/store/auth';
@@ -376,25 +377,33 @@ export function AuthForm() {
                   {verify ? '// verify' : stage === 'forgot' ? '// forgot' : '// reset'}
                 </span>
               ) : (
-                <div className="flex bg-[#E0E5EC] rounded-full p-1.5 shadow-[inset_4px_4px_8px_#b8bcc9,inset_-4px_-4px_8px_#ffffff]">
-                  {(['login', 'signup'] as const).map((m) => (
-                    <button
-                      key={m}
-                      onClick={() => switchMode(m)}
-                      className={`px-5 py-2 rounded-full text-[12px] font-bold uppercase tracking-wide transition-all ${
-                        mode === m && !verify
-                          ? 'bg-[#CC5500] text-white shadow-[4px_4px_8px_#b8bcc9]'
-                          : 'text-[#8A8F98] hover:text-[#2F343D]'
-                      }`}
-                    >
-                      {m === 'login' ? 'Log in' : 'Sign up'}
-                    </button>
-                  ))}
+                <div className="relative flex bg-[#E0E5EC] rounded-full p-1.5 shadow-[inset_4px_4px_8px_#b8bcc9,inset_-4px_-4px_8px_#ffffff] isolate">
+                  {(['login', 'signup'] as const).map((m) => {
+                    const active = mode === m && !verify;
+                    return (
+                      <button
+                        key={m}
+                        onClick={() => switchMode(m)}
+                        className={`relative px-5 py-2 rounded-full text-[12px] font-bold uppercase tracking-wide transition-colors duration-200 ${
+                          active ? 'text-white' : 'text-[#8A8F98] hover:text-[#2F343D]'
+                        }`}
+                      >
+                        {active && (
+                          <motion.div
+                            layoutId="auth-tab-pill"
+                            transition={{ type: 'spring', stiffness: 450, damping: 35 }}
+                            className="absolute inset-0 bg-[#CC5500] rounded-full shadow-[4px_4px_8px_#b8bcc9] z-0"
+                          />
+                        )}
+                        <span className="relative z-10">{m === 'login' ? 'Log in' : 'Sign up'}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
               <button
                 onClick={() => ((verify || stage !== 'auth') ? backToLogin() : switchMode(isLogin ? 'signup' : 'login'))}
-                className="shrink-0 rounded-full bg-[#E0E5EC] px-4 py-2 font-bold text-[13px] text-[#2F343D] shadow-[4px_4px_8px_#b8bcc9,-4px_-4px_8px_#ffffff] hover:text-[#CC5500] active:shadow-[inset_4px_4px_8px_#b8bcc9,inset_-4px_-4px_8px_#ffffff] transition-all"
+                className="relative shrink-0 rounded-full bg-[#E0E5EC] px-4 py-2 font-bold text-[13px] text-[#2F343D] border border-[#CC5500]/40 shadow-[4px_4px_8px_#b8bcc9,-4px_-4px_8px_#ffffff,0_0_14px_rgba(204,85,0,0.35)] hover:shadow-[4px_4px_10px_#b8bcc9,-4px_-4px_10px_#ffffff,0_0_24px_rgba(204,85,0,0.65)] hover:border-[#CC5500] hover:text-[#CC5500] active:shadow-[inset_4px_4px_8px_#b8bcc9,inset_-4px_-4px_8px_#ffffff,0_0_10px_rgba(204,85,0,0.4)] transition-all duration-300"
               >
                 {(verify || stage !== 'auth') ? '← Back' : isLogin ? 'Create account' : 'Sign in'}
               </button>
